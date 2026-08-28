@@ -11,8 +11,19 @@ dependencies:
   - pytorch-mutex=1.0=cuda
   - torchaudio=2.5.1=py310_cu121
   - torchvision=0.20.1=py310_cu121
+  # PyTorch 2.5.1 cannot load against the newer MKL 2025 packages.
+  - mkl=2023.1.0
+  - fsspec
+  # Build the local CUDA extensions with the same CUDA major/minor as PyTorch.
+  - cuda-nvcc=12.1
+  - cuda-cudart-dev=12.1
+  - cuda-cccl=12.1
+  - gcc_linux-64=11.2.0
+  - gxx_linux-64=11.2.0
+  - ninja
   - tqdm
   - pip:
+    - sympy==1.13.1
     - plyfile
     - submodules/diff-gaussian-rasterization
     - submodules/simple-knn
