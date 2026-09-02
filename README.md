@@ -39,6 +39,35 @@ compensation = d(compensation)
 opacity = opacity * compensation[:, None]
 ```
 ## ✅ Full implementation
+
+## MVSInit-DG extension
+
+This branch adds a small, training-view-only initialization module for sparse
+reconstruction. It keeps DropGaussian's renderer, loss, optimizer, and
+densification schedule unchanged, while combining provenance-checked MVS points
+with the released initializer under fixed point budgets. DTU models receive one
+final lowest-opacity pruning step to bound the saved Gaussian count.
+
+Run a matched setting with:
+
+```bash
+MODE=dropgaussian DATASET=llff N_VIEWS=3 GPU_ID=1 \
+  bash scripts/train_mvsdrop_benchmark.sh
+MODE=mvsdrop DATASET=llff N_VIEWS=3 GPU_ID=1 \
+  bash scripts/train_mvsdrop_benchmark.sh
+```
+
+For the preregistered nine-setting, three-seed evaluation:
+
+```bash
+SEEDS="0 1 2" GPU_ID=1 bash scripts/run_mvsdrop_multiseed.sh
+```
+
+The runner is resumable and records seed, initialization provenance, training
+time, peak allocated VRAM, and final Gaussian count. See
+[`docs/research/mvsdrop_report.md`](docs/research/mvsdrop_report.md) for the
+method, cache contract, ablations, and evidence boundary.
+
 ### 📦 Installation
 We provide an installation using Conda package and environment management:
 ```

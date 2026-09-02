@@ -55,7 +55,16 @@ class ModelParams(ParamGroup):
         self.data_device = "cuda"
         self.eval = False
         self.n_views = 3
+        self.dataset_name = "auto"
         self.rand_pcd = False
+        self.init_mode = "colmap_dense"
+        self.mvs_init_path = ""
+        self.mvs_init_max_points = 250000
+        self.mvs_init_strategy = "auto"
+        self.mvs_init_total_max_points = 350000
+        self.mvs_init_dense_base_threshold = 200000
+        self.mvs_init_dense_residual_points = 100000
+        self.mvs_final_max_gaussians = 70000
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):

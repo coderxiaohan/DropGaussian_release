@@ -10,6 +10,11 @@
 #
 
 import os
+import json
+import random
+import subprocess
+import time
+import numpy as np
 import torch
 import torchvision
 from random import randint
@@ -32,11 +37,41 @@ try:
 except ImportError:
     TENSORBOARD_FOUND = False
 
-def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from):
+
+def prune_to_opacity_budget(gaussians, max_gaussians):
+    """Remove the lowest-opacity Gaussians at the final DTU checkpoint."""
+
+    before = int(gaussians.get_xyz.shape[0])
+    budget = int(max_gaussians)
+    if budget <= 0 or before <= budget:
+        return {
+            "policy": "top_opacity",
+            "max_gaussians": budget,
+            "before": before,
+            "after": before,
+        }
+    keep = torch.topk(
+        gaussians._opacity.detach().squeeze(-1), budget, sorted=False
+    ).indices
+    prune_mask = torch.ones(before, device=keep.device, dtype=torch.bool)
+    prune_mask[keep] = False
+    gaussians.prune_points(prune_mask)
+    return {
+        "policy": "top_opacity",
+        "max_gaussians": budget,
+        "before": before,
+        "after": int(gaussians.get_xyz.shape[0]),
+    }
+
+
+def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, seed):
+    torch.cuda.reset_peak_memory_stats()
+    training_start = time.perf_counter()
     first_iter = 0
     tb_writer = prepare_output_and_logger(dataset)
     gaussians = GaussianModel(dataset.sh_degree)
     scene = Scene(dataset, gaussians)
+    initial_point_count = int(gaussians.get_xyz.shape[0])
     gaussians.training_setup(opt)
     if checkpoint:
         (model_params, first_iter) = torch.load(checkpoint)
@@ -58,6 +93,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     bg_mask = None
     loss_accum = 0
     pseudo_stack = None
+    final_pruning_metadata = None
     for iteration in range(first_iter, opt.iterations + 1):        
         iter_start.record()
 
@@ -100,6 +136,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration == opt.iterations:
                 progress_bar.close()
 
+            if (
+                iteration == opt.iterations
+                and dataset.init_mode == "mvs_anywhere"
+                and str(dataset.dataset_name).lower() == "dtu"
+            ):
+                final_pruning_metadata = prune_to_opacity_budget(
+                    gaussians, dataset.mvs_final_max_gaussians
+                )
+
             # Log and save
             training_report(dataset, tb_writer, iteration, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
             if (iteration in saving_iterations):
@@ -126,6 +171,44 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+
+    torch.cuda.synchronize()
+    try:
+        git_commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"],
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            text=True,
+        ).strip()
+    except (OSError, subprocess.SubprocessError):
+        git_commit = None
+    manifest = {
+        "status": "completed",
+        "method": (
+            "MVSInit-DG"
+            if dataset.init_mode == "mvs_anywhere"
+            else "DropGaussian"
+        ),
+        "metricboost_mode": "dropgaussian",
+        "init_mode": dataset.init_mode,
+        "initialization_source": scene.initialization_metadata,
+        "source_path": dataset.source_path,
+        "model_path": dataset.model_path,
+        "scene": os.path.basename(os.path.normpath(dataset.source_path)),
+        "seed": int(seed),
+        "mask_seed": int(seed),
+        "n_views": int(dataset.n_views),
+        "iterations": int(opt.iterations),
+        "completed_iterations": int(opt.iterations),
+        "initial_point_count": initial_point_count,
+        "gaussian_count": int(gaussians.get_xyz.shape[0]),
+        "final_pruning": final_pruning_metadata,
+        "training_time": time.perf_counter() - training_start,
+        "peak_vram": int(torch.cuda.max_memory_allocated()),
+        "git_commit": git_commit,
+        "command": list(sys.argv),
+    }
+    with open(os.path.join(dataset.model_path, "manifest.json"), "w") as stream:
+        json.dump(manifest, stream, indent=2, sort_keys=True)
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
@@ -206,6 +289,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_iterations", nargs="+", type=int, default=[5000, 10000,])
     parser.add_argument("--save_iterations", nargs="+", type=int, default=[10000])
     parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--checkpoint_iterations", nargs="+", type=int, default=[])
     parser.add_argument("--start_checkpoint", type=str, default = None)
     args = parser.parse_args(sys.argv[1:])
@@ -215,11 +299,14 @@ if __name__ == "__main__":
 
     # Initialize system state (RNG)
     safe_state(args.quiet)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
 
     # Start GUI server, configure and run training
     network_gui.init(args.ip, args.port)
     torch.autograd.set_detect_anomaly(args.detect_anomaly)
-    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from)
+    training(lp.extract(args), op.extract(args), pp.extract(args), args.test_iterations, args.save_iterations, args.checkpoint_iterations, args.start_checkpoint, args.debug_from, args.seed)
 
     # All done
     print("\nTraining complete.")
