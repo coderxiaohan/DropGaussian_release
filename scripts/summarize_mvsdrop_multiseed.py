@@ -43,6 +43,12 @@ METRICS = ("psnr", "ssim", "lpips")
 RESOURCES = ("training_time", "peak_vram", "gaussian_count")
 
 
+def is_final_policy_identity(tag: str, views: int) -> bool:
+    """Return settings where the frozen policy is exactly DropGaussian."""
+
+    return tag == "blender" or (tag == "dtu" and int(views) > 3)
+
+
 def _summarize_scene_rows(rows: list[dict]) -> dict:
     return {
         "scene_count": len(rows),
@@ -156,7 +162,7 @@ def collect(
     max_time_ratio: float = 1.5,
     max_vram_ratio: float = 2.0,
     max_gaussian_ratio: float = 2.0,
-    replay_dtu_quality_gate: bool = False,
+    replay_final_policy: bool = False,
 ) -> tuple[list[dict], dict]:
     rows = []
     complete_deltas = []
@@ -166,6 +172,7 @@ def collect(
             "tag": tag,
             "views": views,
             "routed_mvs_scenes": [],
+            "evaluation_route": "trained_pair",
         }
         seed_deltas = []
         for seed in seeds:
@@ -177,7 +184,10 @@ def collect(
                 views=views,
                 iteration=iteration,
             )
-            method = load_setting(
+            identity_passthrough = (
+                replay_final_policy and is_final_policy_identity(tag, views)
+            )
+            method = baseline if identity_passthrough else load_setting(
                 root,
                 seed=seed,
                 mode="mvsdrop",
@@ -187,10 +197,13 @@ def collect(
             )
             if baseline is None or method is None:
                 continue
-            if replay_dtu_quality_gate and tag == "dtu":
+            if identity_passthrough:
+                row["evaluation_route"] = "identity_passthrough"
+            elif replay_final_policy and tag == "dtu":
                 method = route_dtu_quality_gate(
                     baseline, method, views=views
                 )
+                row["evaluation_route"] = "input_density_gate"
                 routed_scenes = method["routed_mvs_scenes"]
                 if row["routed_mvs_scenes"] not in ([], routed_scenes):
                     raise ValueError(
@@ -267,7 +280,7 @@ def collect(
     all_settings_complete = len(complete_deltas) == len(SETTINGS)
     audit = {
         "requested_seeds": list(seeds),
-        "replay_dtu_quality_gate": replay_dtu_quality_gate,
+        "replay_final_policy": replay_final_policy,
         "resource_ratio_limits": {
             "training_time": max_time_ratio,
             "peak_vram": max_vram_ratio,
@@ -308,7 +321,7 @@ def _fmt(value, digits=4):
 def markdown(rows: list[dict], audit: dict) -> str:
     method_name = (
         "MVSInit-DG-Gated"
-        if audit.get("replay_dtu_quality_gate")
+        if audit.get("replay_final_policy")
         else "MVSInit-DG"
     )
     lines = [
@@ -370,12 +383,19 @@ def main() -> None:
     parser.add_argument("--max-vram-ratio", type=float, default=2.0)
     parser.add_argument("--max-gaussian-ratio", type=float, default=2.0)
     parser.add_argument(
-        "--replay-dtu-quality-gate",
+        "--replay-final-policy",
         action="store_true",
         help=(
-            "Replay the deterministic DTU input-statistics gate over the fully "
-            "measured baseline and MVS branches."
+            "Replay the frozen input-density gate over measured branches and "
+            "reuse the same baseline checkpoints for identity-passthrough "
+            "settings."
         ),
+    )
+    parser.add_argument(
+        "--replay-dtu-quality-gate",
+        dest="replay_final_policy",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     args = parser.parse_args()
     seeds = tuple(args.seeds)
@@ -396,9 +416,9 @@ def main() -> None:
         max_time_ratio=args.max_time_ratio,
         max_vram_ratio=args.max_vram_ratio,
         max_gaussian_ratio=args.max_gaussian_ratio,
-        replay_dtu_quality_gate=args.replay_dtu_quality_gate,
+        replay_final_policy=args.replay_final_policy,
     )
-    suffix = "_gated" if args.replay_dtu_quality_gate else ""
+    suffix = "_gated" if args.replay_final_policy else ""
     with (root / f"multiseed_matrix{suffix}.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()

@@ -6,11 +6,19 @@ from pathlib import Path
 from scripts.summarize_mvsdrop_multiseed import (
     SCENES,
     collect,
+    is_final_policy_identity,
     route_dtu_quality_gate,
 )
 
 
 class MVSDropMultiSeedTest(unittest.TestCase):
+    def test_final_policy_identity_settings(self):
+        self.assertTrue(is_final_policy_identity("dtu", 6))
+        self.assertTrue(is_final_policy_identity("dtu", 9))
+        self.assertTrue(is_final_policy_identity("blender", 8))
+        self.assertFalse(is_final_policy_identity("dtu", 3))
+        self.assertFalse(is_final_policy_identity("llff", 9))
+
     def test_dtu_quality_gate_routes_measured_scene_branches(self):
         def row(scene, psnr, base_points=None, source_points=None):
             value = {
@@ -102,6 +110,44 @@ class MVSDropMultiSeedTest(unittest.TestCase):
             self.assertTrue(llff3["resource_pass"])
             self.assertFalse(audit["all_settings_complete"])
             self.assertIsNone(audit["goal_pass"])
+
+    def test_identity_passthrough_reuses_complete_baseline_setting(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for scene in SCENES["dtu"]:
+                scene_root = root / "seed_1/dropgaussian/dtu6" / scene
+                scene_root.mkdir(parents=True)
+                scene_root.joinpath("metrics_30000.txt").write_text(
+                    "PSNR : 20\nSSIM : 0.8\nLPIPS : 0.1\n",
+                    encoding="utf-8",
+                )
+                scene_root.joinpath("manifest.json").write_text(
+                    json.dumps(
+                        {
+                            "status": "completed",
+                            "seed": 1,
+                            "mask_seed": 1,
+                            "n_views": 6,
+                            "iterations": 30000,
+                            "metricboost_mode": "dropgaussian",
+                            "init_mode": "colmap_dense",
+                            "training_time": 10,
+                            "peak_vram": 100,
+                            "gaussian_count": 100,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+            rows, _ = collect(root, (1,), replay_final_policy=True)
+            dtu6 = next(
+                row
+                for row in rows
+                if row["tag"] == "dtu" and row["views"] == 6
+            )
+            self.assertTrue(dtu6["complete"])
+            self.assertEqual(dtu6["evaluation_route"], "identity_passthrough")
+            self.assertEqual(dtu6["delta_psnr"], 0.0)
+            self.assertEqual(dtu6["ratio_training_time"], 1.0)
 
     def test_incomplete_seed_is_not_aggregated(self):
         with tempfile.TemporaryDirectory() as directory:
