@@ -51,6 +51,12 @@ is quality-gated using training-input point counts: it is enabled only for a
 Selected DTU models receive one final lowest-opacity pruning step to bound the
 saved Gaussian count; rejected candidates exactly retain the baseline path.
 
+The completed three-seed audit passes the frozen target: 9/9 settings are
+complete, 6/9 improve at least two image metrics, mean PSNR gain over all nine
+settings is +0.2546 dB, and every resource gate passes. See the research report
+below for the full table and the distinction between trained, gated, and
+identity branches.
+
 Run a matched setting with:
 
 ```bash
@@ -64,6 +70,9 @@ For the preregistered nine-setting, three-seed evaluation:
 
 ```bash
 SEEDS="0 1 2" GPU_ID=1 bash scripts/run_mvsdrop_multiseed.sh
+python scripts/summarize_mvsdrop_multiseed.py \
+  --root output/mvsdrop/multiseed_final --seeds 0 1 2 \
+  --replay-final-policy
 ```
 
 The runner is resumable and records seed, initialization provenance, training
