@@ -140,6 +140,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 iteration == opt.iterations
                 and dataset.init_mode == "mvs_anywhere"
                 and str(dataset.dataset_name).lower() == "dtu"
+                and scene.initialization_metadata.get("quality_gate", {}).get(
+                    "use_mvs_prior", True
+                )
             ):
                 final_pruning_metadata = prune_to_opacity_budget(
                     gaussians, dataset.mvs_final_max_gaussians

@@ -24,6 +24,7 @@ from utils.mvs_init import (
     resolve_mvs_fusion_budget,
     resolve_mvs_init_point_budget,
     resolve_mvs_init_strategy,
+    should_use_dtu_mvs_prior,
 )
 
 class Scene:
@@ -135,6 +136,38 @@ class Scene:
                 mvs_metadata["configured_max_points"] = int(
                     args.mvs_init_max_points
                 )
+                use_mvs_prior = should_use_dtu_mvs_prior(
+                    strategy,
+                    dataset_name=getattr(args, "dataset_name", "auto"),
+                    n_views=args.n_views,
+                    base_point_count=base_point_count,
+                    mvs_source_point_count=mvs_metadata["source_point_count"],
+                    max_base_points=args.mvs_init_dtu_max_base_points,
+                    min_mvs_source_points=args.mvs_init_dtu_min_source_points,
+                )
+                mvs_metadata["quality_gate"] = {
+                    "enabled": (
+                        strategy == "auto"
+                        and str(getattr(args, "dataset_name", "auto")).lower()
+                        == "dtu"
+                    ),
+                    "use_mvs_prior": use_mvs_prior,
+                    "max_base_points": int(args.mvs_init_dtu_max_base_points),
+                    "min_mvs_source_points": int(
+                        args.mvs_init_dtu_min_source_points
+                    ),
+                }
+                if not use_mvs_prior:
+                    resolved_strategy = "passthrough"
+                    mvs_pcd = scene_info.point_cloud
+                    mvs_metadata.update(
+                        {
+                            "fusion_policy": "dtu_quality_gate_passthrough",
+                            "base_point_count": base_point_count,
+                            "mvs_point_count": 0,
+                            "fused_point_count": base_point_count,
+                        }
+                    )
                 if resolved_strategy == "augment":
                     total_max_points = resolve_mvs_fusion_budget(
                         strategy,

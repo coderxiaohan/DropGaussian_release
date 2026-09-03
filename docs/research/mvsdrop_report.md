@@ -21,17 +21,23 @@ Primary references:
 ## Frozen automatic policy
 
 The policy depends only on the dataset label, training-view count, and input
-point count. It never reads a held-out image or evaluation metric.
+point statistics. It never reads a held-out image or evaluation metric.
 
 - Blender keeps the released synthetic initializer.
 - LLFF 3-view replaces the weak dense-fusion cloud with a deterministic 100k
   subset of the MVS cloud.
 - Other real scenes preserve every COLMAP point and add deterministic MVS
-  residual points. DTU uses a 100k total input budget; an input below 200k uses
-  a 350k total budget; an input at or above 200k receives only 100k extra MVS
-  points.
-- DTU keeps the 70k highest-opacity Gaussians at the final checkpoint. This
-  happens after optimization and before final evaluation/saving.
+  residual points. An input below 200k uses a 350k total budget; an input at or
+  above 200k receives only 100k extra MVS points.
+- DTU adds a quality gate because its full-scene pilot exposed heterogeneous
+  cache quality. Automatic fusion is used only at 3 views when COLMAP contains
+  fewer than 10k points and the verified MVS cache contains at least 100k
+  candidates. Selected scenes use a 100k total input budget; all other DTU
+  scenes follow the exact baseline initialization path.
+- Selected DTU scenes keep the 70k highest-opacity Gaussians at the final
+  checkpoint. This happens after optimization and before final
+  evaluation/saving; the pruning step is disabled when the quality gate rejects
+  the MVS prior.
 
 Every cache selection records its path, backend, selected-point hash, and
 camera provenance. A cache whose recorded camera names differ from the active

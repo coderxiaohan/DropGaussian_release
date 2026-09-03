@@ -14,6 +14,7 @@ from utils.mvs_init import (
     resolve_mvs_init_point_budget,
     resolve_mvs_init_strategy,
     resolve_mvs_init_path,
+    should_use_dtu_mvs_prior,
 )
 
 
@@ -30,6 +31,52 @@ def _write_ply(path: Path, count: int):
 
 
 class MVSInitTest(unittest.TestCase):
+    def test_dtu_quality_gate_uses_only_input_point_statistics(self):
+        common = {
+            "requested_strategy": "auto",
+            "dataset_name": "dtu",
+            "n_views": 3,
+        }
+        self.assertTrue(
+            should_use_dtu_mvs_prior(
+                base_point_count=9_999,
+                mvs_source_point_count=100_000,
+                **common,
+            )
+        )
+        self.assertFalse(
+            should_use_dtu_mvs_prior(
+                base_point_count=10_000,
+                mvs_source_point_count=1_000_000,
+                **common,
+            )
+        )
+        self.assertFalse(
+            should_use_dtu_mvs_prior(
+                base_point_count=5_000,
+                mvs_source_point_count=99_999,
+                **common,
+            )
+        )
+        self.assertFalse(
+            should_use_dtu_mvs_prior(
+                requested_strategy="auto",
+                dataset_name="dtu",
+                n_views=6,
+                base_point_count=5_000,
+                mvs_source_point_count=1_000_000,
+            )
+        )
+        self.assertTrue(
+            should_use_dtu_mvs_prior(
+                requested_strategy="augment",
+                dataset_name="dtu",
+                n_views=9,
+                base_point_count=50_000,
+                mvs_source_point_count=1,
+            )
+        )
+
     def test_auto_strategy_uses_only_dataset_and_training_view_count(self):
         self.assertEqual(
             resolve_mvs_init_strategy("auto", n_views=3, is_synthetic=False),

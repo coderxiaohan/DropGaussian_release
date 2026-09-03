@@ -17,6 +17,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.summarize_mvsdrop_setting import parse_metrics
+from utils.mvs_init import should_use_dtu_mvs_prior
 
 
 SETTINGS = (
@@ -40,6 +41,54 @@ SCENES = {
 
 METRICS = ("psnr", "ssim", "lpips")
 RESOURCES = ("training_time", "peak_vram", "gaussian_count")
+
+
+def _summarize_scene_rows(rows: list[dict]) -> dict:
+    return {
+        "scene_count": len(rows),
+        "scenes": rows,
+        **{
+            name: mean(row[name] for row in rows)
+            for name in (*METRICS, *RESOURCES)
+        },
+    }
+
+
+def route_dtu_quality_gate(
+    baseline: dict, method: dict, *, views: int
+) -> dict:
+    """Replay the deterministic DTU gate over fully measured paired branches."""
+
+    baseline_rows = {row["scene"]: row for row in baseline["scenes"]}
+    method_scenes = {row["scene"] for row in method["scenes"]}
+    if set(baseline_rows) != method_scenes:
+        raise ValueError(
+            "DTU gate replay requires identical baseline and method scene sets"
+        )
+    routed_rows = []
+    selected = []
+    for method_row in method["scenes"]:
+        source = method_row.get("initialization_source") or {}
+        required = ("base_point_count", "source_point_count")
+        if not all(name in source for name in required):
+            raise ValueError(
+                f"missing DTU gate provenance for {method_row['scene']}: {required}"
+            )
+        use_mvs = should_use_dtu_mvs_prior(
+            "auto",
+            dataset_name="dtu",
+            n_views=views,
+            base_point_count=source["base_point_count"],
+            mvs_source_point_count=source["source_point_count"],
+        )
+        if use_mvs:
+            selected.append(method_row["scene"])
+        chosen = method_row if use_mvs else baseline_rows[method_row["scene"]]
+        routed_rows.append(chosen)
+    return {
+        **_summarize_scene_rows(routed_rows),
+        "routed_mvs_scenes": selected,
+    }
 
 
 def _finite_number(value, *, label: str) -> float:
@@ -94,15 +143,10 @@ def load_setting(
                 "gaussian_count": _finite_number(
                     manifest["gaussian_count"], label="gaussian_count"
                 ),
+                "initialization_source": manifest.get("initialization_source"),
             }
         )
-    return {
-        "scene_count": len(rows),
-        **{
-            name: mean(row[name] for row in rows)
-            for name in (*METRICS, *RESOURCES)
-        },
-    }
+    return _summarize_scene_rows(rows)
 
 
 def collect(
@@ -112,11 +156,17 @@ def collect(
     max_time_ratio: float = 1.5,
     max_vram_ratio: float = 2.0,
     max_gaussian_ratio: float = 2.0,
+    replay_dtu_quality_gate: bool = False,
 ) -> tuple[list[dict], dict]:
     rows = []
     complete_deltas = []
     for dataset, tag, views, iteration in SETTINGS:
-        row = {"dataset": dataset, "tag": tag, "views": views}
+        row = {
+            "dataset": dataset,
+            "tag": tag,
+            "views": views,
+            "routed_mvs_scenes": [],
+        }
         seed_deltas = []
         for seed in seeds:
             baseline = load_setting(
@@ -137,6 +187,16 @@ def collect(
             )
             if baseline is None or method is None:
                 continue
+            if replay_dtu_quality_gate and tag == "dtu":
+                method = route_dtu_quality_gate(
+                    baseline, method, views=views
+                )
+                routed_scenes = method["routed_mvs_scenes"]
+                if row["routed_mvs_scenes"] not in ([], routed_scenes):
+                    raise ValueError(
+                        f"DTU gate decision differs between seeds for {views} views"
+                    )
+                row["routed_mvs_scenes"] = routed_scenes
             delta = {
                 "seed": seed,
                 **{
@@ -207,6 +267,7 @@ def collect(
     all_settings_complete = len(complete_deltas) == len(SETTINGS)
     audit = {
         "requested_seeds": list(seeds),
+        "replay_dtu_quality_gate": replay_dtu_quality_gate,
         "resource_ratio_limits": {
             "training_time": max_time_ratio,
             "peak_vram": max_vram_ratio,
@@ -245,6 +306,11 @@ def _fmt(value, digits=4):
 
 
 def markdown(rows: list[dict], audit: dict) -> str:
+    method_name = (
+        "MVSInit-DG-Gated"
+        if audit.get("replay_dtu_quality_gate")
+        else "MVSInit-DG"
+    )
     lines = [
         "| Dataset | Views | Method | Seeds | PSNR ↑ | SSIM ↑ | LPIPS ↓ |",
         "| --- | ---: | --- | ---: | ---: | ---: | ---: |",
@@ -252,7 +318,7 @@ def markdown(rows: list[dict], audit: dict) -> str:
     for row in rows:
         for label, name in (
             ("baseline", "DropGaussian"),
-            ("method", "MVSInit-DG"),
+            ("method", method_name),
         ):
             lines.append(
                 "| {dataset} | {views} | {name} | {complete_seeds}/{required_seeds} | {psnr} | {ssim} | {lpips} |".format(
@@ -303,6 +369,14 @@ def main() -> None:
     parser.add_argument("--max-time-ratio", type=float, default=1.5)
     parser.add_argument("--max-vram-ratio", type=float, default=2.0)
     parser.add_argument("--max-gaussian-ratio", type=float, default=2.0)
+    parser.add_argument(
+        "--replay-dtu-quality-gate",
+        action="store_true",
+        help=(
+            "Replay the deterministic DTU input-statistics gate over the fully "
+            "measured baseline and MVS branches."
+        ),
+    )
     args = parser.parse_args()
     seeds = tuple(args.seeds)
     if not seeds or len(set(seeds)) != len(seeds) or min(seeds) < 0:
@@ -322,16 +396,18 @@ def main() -> None:
         max_time_ratio=args.max_time_ratio,
         max_vram_ratio=args.max_vram_ratio,
         max_gaussian_ratio=args.max_gaussian_ratio,
+        replay_dtu_quality_gate=args.replay_dtu_quality_gate,
     )
-    with (root / "multiseed_matrix.csv").open("w", newline="", encoding="utf-8") as stream:
+    suffix = "_gated" if args.replay_dtu_quality_gate else ""
+    with (root / f"multiseed_matrix{suffix}.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    (root / "multiseed_audit.json").write_text(
+    (root / f"multiseed_audit{suffix}.json").write_text(
         json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     table = markdown(rows, audit)
-    (root / "multiseed_matrix.md").write_text(table, encoding="utf-8")
+    (root / f"multiseed_matrix{suffix}.md").write_text(table, encoding="utf-8")
     print(table, end="")
 
 

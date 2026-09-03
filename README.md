@@ -45,8 +45,11 @@ opacity = opacity * compensation[:, None]
 This branch adds a small, training-view-only initialization module for sparse
 reconstruction. It keeps DropGaussian's renderer, loss, optimizer, and
 densification schedule unchanged, while combining provenance-checked MVS points
-with the released initializer under fixed point budgets. DTU models receive one
-final lowest-opacity pruning step to bound the saved Gaussian count.
+with the released initializer under fixed point budgets. Automatic DTU fusion
+is quality-gated using training-input point counts: it is enabled only for a
+3-view scene with fewer than 10k COLMAP points and at least 100k MVS candidates.
+Selected DTU models receive one final lowest-opacity pruning step to bound the
+saved Gaussian count; rejected candidates exactly retain the baseline path.
 
 Run a matched setting with:
 

@@ -18,6 +18,33 @@ _AUTO_REPLACE_MAX_POINTS = 100_000
 _AUTO_DTU_TOTAL_POINTS = 100_000
 
 
+def should_use_dtu_mvs_prior(
+    requested_strategy: str,
+    *,
+    dataset_name: str,
+    n_views: int,
+    base_point_count: int,
+    mvs_source_point_count: int,
+    max_base_points: int = 10_000,
+    min_mvs_source_points: int = 100_000,
+) -> bool:
+    """Gate automatic DTU fusion using only training-input point statistics.
+
+    Explicit ``replace``/``augment`` requests are never gated.  In automatic
+    mode, DTU uses MVS only when COLMAP is genuinely under-populated and the
+    candidate MVS reconstruction is large enough to act as a useful prior.
+    No held-out image or evaluation metric is consulted.
+    """
+
+    if requested_strategy != "auto" or str(dataset_name).lower() != "dtu":
+        return True
+    return (
+        int(n_views) <= 3
+        and int(base_point_count) < int(max_base_points)
+        and int(mvs_source_point_count) >= int(min_mvs_source_points)
+    )
+
+
 def resolve_mvs_init_strategy(
     requested: str,
     *,
