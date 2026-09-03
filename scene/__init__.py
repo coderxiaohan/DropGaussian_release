@@ -94,6 +94,14 @@ class Scene:
                 dataset_name=getattr(args, "dataset_name", "auto"),
             )
             base_point_count = int(scene_info.point_cloud.points.shape[0])
+            dataset_name = str(getattr(args, "dataset_name", "auto")).lower()
+            dtu_gate_enabled = strategy == "auto" and dataset_name == "dtu"
+            dtu_gate_pre_rejected = dtu_gate_enabled and (
+                int(args.n_views) > 3
+                or base_point_count >= int(args.mvs_init_dtu_max_base_points)
+            )
+            if dtu_gate_pre_rejected:
+                resolved_strategy = "passthrough"
             skip_mvs = resolved_strategy == "passthrough"
             if skip_mvs:
                 mvs_pcd = scene_info.point_cloud
@@ -101,9 +109,13 @@ class Scene:
                 mvs_metadata = {
                     "path": str(mvs_path),
                     "fusion_policy": (
-                        "synthetic_base_passthrough"
-                        if resolved_strategy == "passthrough"
-                        else "dense_base_passthrough"
+                        "dtu_quality_gate_passthrough"
+                        if dtu_gate_pre_rejected
+                        else (
+                            "synthetic_base_passthrough"
+                            if is_synthetic
+                            else "dense_base_passthrough"
+                        )
                     ),
                     "base_point_count": base_point_count,
                     "mvs_point_count": 0,
@@ -113,6 +125,17 @@ class Scene:
                     ),
                     "camera_provenance_verified": None,
                 }
+                if dtu_gate_pre_rejected:
+                    mvs_metadata["quality_gate"] = {
+                        "enabled": True,
+                        "use_mvs_prior": False,
+                        "max_base_points": int(
+                            args.mvs_init_dtu_max_base_points
+                        ),
+                        "min_mvs_source_points": int(
+                            args.mvs_init_dtu_min_source_points
+                        ),
+                    }
             else:
                 effective_max_points = resolve_mvs_init_point_budget(
                     strategy,
@@ -138,7 +161,7 @@ class Scene:
                 )
                 use_mvs_prior = should_use_dtu_mvs_prior(
                     strategy,
-                    dataset_name=getattr(args, "dataset_name", "auto"),
+                    dataset_name=dataset_name,
                     n_views=args.n_views,
                     base_point_count=base_point_count,
                     mvs_source_point_count=mvs_metadata["source_point_count"],
@@ -147,9 +170,7 @@ class Scene:
                 )
                 mvs_metadata["quality_gate"] = {
                     "enabled": (
-                        strategy == "auto"
-                        and str(getattr(args, "dataset_name", "auto")).lower()
-                        == "dtu"
+                        strategy == "auto" and dataset_name == "dtu"
                     ),
                     "use_mvs_prior": use_mvs_prior,
                     "max_base_points": int(args.mvs_init_dtu_max_base_points),
