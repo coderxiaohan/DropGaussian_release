@@ -11,6 +11,22 @@ from scripts.summarize_mvsdrop_multiseed import (
 
 class MVSDropMultiSeedTest(unittest.TestCase):
     @staticmethod
+    def _protocol(scene: str, seed: int, *, tag: str, views: int) -> dict:
+        return {
+            "dataset_name": tag,
+            "source_path": f"/data/{tag}/{scene}",
+            "resolution": 4 if tag == "dtu" else 8,
+            "white_background": tag == "blender",
+            "rand_pcd": tag == "blender",
+            "n_views": views,
+            "iterations": 10000,
+            "seed": seed,
+            "train_camera_names": [f"train_{index}" for index in range(views)],
+            "test_camera_names": ["test_0"],
+            "base_initialization_sha256": f"base-{tag}-{scene}-seed-{seed}",
+        }
+
+    @staticmethod
     def _write_setting(root: Path, seed: int, mode: str) -> None:
         for scene in SCENES["llff"]:
             scene_root = root / f"seed_{seed}" / mode / "llff3" / scene
@@ -37,6 +53,11 @@ class MVSDropMultiSeedTest(unittest.TestCase):
                         "training_time": 11 if method else 10,
                         "peak_vram": 120 if method else 100,
                         "gaussian_count": 130 if method else 100,
+                        "git_commit": "frozen-test-commit",
+                        "git_dirty": False,
+                        "protocol": MVSDropMultiSeedTest._protocol(
+                            scene, seed, tag="llff", views=3
+                        ),
                     }
                 ),
                 encoding="utf-8",
@@ -67,7 +88,7 @@ class MVSDropMultiSeedTest(unittest.TestCase):
             for scene in SCENES["dtu"]:
                 scene_root = root / "seed_1/dropgaussian/dtu6" / scene
                 scene_root.mkdir(parents=True)
-                scene_root.joinpath("metrics_30000.txt").write_text(
+                scene_root.joinpath("metrics_10000.txt").write_text(
                     "PSNR : 20\nSSIM : 0.8\nLPIPS : 0.1\n",
                     encoding="utf-8",
                 )
@@ -78,12 +99,17 @@ class MVSDropMultiSeedTest(unittest.TestCase):
                             "seed": 1,
                             "mask_seed": 1,
                             "n_views": 6,
-                            "iterations": 30000,
+                            "iterations": 10000,
                             "metricboost_mode": "dropgaussian",
                             "init_mode": "colmap_dense",
                             "training_time": 10,
                             "peak_vram": 100,
                             "gaussian_count": 100,
+                            "git_commit": "frozen-test-commit",
+                            "git_dirty": False,
+                            "protocol": self._protocol(
+                                scene, 1, tag="dtu", views=6
+                            ),
                         }
                     ),
                     encoding="utf-8",
@@ -108,6 +134,29 @@ class MVSDropMultiSeedTest(unittest.TestCase):
             rows, _ = collect(root, (1,))
             self.assertFalse(rows[0]["complete"])
             self.assertIsNone(rows[0]["delta_psnr"])
+
+    def test_pair_rejects_different_base_initialization(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_setting(root, 1, "dropgaussian")
+            self._write_setting(root, 1, "mvsdrop")
+            manifest_path = root / "seed_1/mvsdrop/llff3/fern/manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["protocol"]["base_initialization_sha256"] = "different"
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "paired protocol mismatch"):
+                collect(root, (1,))
+
+    def test_dirty_checkout_is_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_setting(root, 1, "dropgaussian")
+            manifest_path = root / "seed_1/dropgaussian/llff3/fern/manifest.json"
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            manifest["git_dirty"] = True
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "clean checkout"):
+                collect(root, (1,))
 
 
 if __name__ == "__main__":

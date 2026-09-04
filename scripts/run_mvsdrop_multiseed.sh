@@ -6,6 +6,14 @@ set -euo pipefail
 #   SEEDS=2 GPU_ID=2 bash scripts/run_mvsdrop_multiseed.sh
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+if [[ -n $(git -C "$repo_root" status --porcelain --untracked-files=no) ]]; then
+    echo "Formal paired evaluation requires a clean committed checkout." >&2
+    echo "Commit or stash tracked changes before starting the benchmark." >&2
+    exit 2
+fi
+protocol_commit=$(git -C "$repo_root" rev-parse HEAD)
+echo "Frozen paired-protocol commit: $protocol_commit"
+
 output_root=${OUTPUT_ROOT:-$repo_root/output/mvsdrop/multiseed}
 read -r -a seeds <<< "${SEEDS:-0 1 2}"
 read -r -a matrix <<< "${MATRIX:-llff:3 llff:6 llff:9 dtu:3 dtu:6 dtu:9 mipnerf360:12 mipnerf360:24 blender:8}"

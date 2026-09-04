@@ -191,8 +191,55 @@ $\alpha_i$ 和 $\gamma_i$ 连续趋零。这给出了“平滑弱化”和“端
 
 ## 5. 当前验证结果
 
-以下是 seed 0、与 DropGaussian 配对的开发集验证。LLFF/Mip-NeRF360/DTU 使用
-各自既定评估协议；DTU 使用固定 split 和 IDR foreground mask。LPIPS 越低越好。
+### 5.0 冻结的配对实验协议
+
+正式比较不再把历史 baseline 均值与新方法均值直接相减。Baseline 和 MVSInit
+必须由同一个 `scripts/train_mvsdrop_benchmark.sh` 产生，并满足：
+
+1. 相同源码 commit，且运行时 tracked working tree 必须干净；
+2. 相同场景、训练/测试相机名称、分辨率、迭代数和 seed；
+3. 相同基础 SfM/随机点云 SHA-256；
+4. 唯一允许不同的实验变量是 `init_mode`；
+5. 每个设置必须包含完整官方场景集合，正式表格使用 seed 0/1/2 的配对均值。
+
+DropGaussian-matched 主协议固定为：
+
+| Dataset | Views | Resolution | Iterations |
+| --- | --- | ---: | ---: |
+| LLFF | 3 / 6 / 9 | 8 | 10,000 |
+| DTU | 3 / 6 / 9 | 4 | 10,000 |
+| Mip-NeRF360 | 12 / 24 | 8 | 10,000 |
+| Blender | 8 | 1 | 10,000 |
+
+Blender 两个分支都按相同 seed 在各自进程内生成相同的 10k 随机基础点云。随机
+点云不再写入数据集共享的 `points3d.ply`，因此并行 seed 不会互相覆盖。manifest
+记录完整 protocol identity；`summarize_mvsdrop_multiseed.py` 会拒绝 commit、相机
+划分或基础点云哈希不一致的配对。
+
+推荐从已提交的干净分支运行：
+
+```bash
+SEEDS="0 1 2" bash scripts/run_mvsdrop_multiseed.sh
+```
+
+先验证 Blender 配对身份时可只跑一个 setting：
+
+```bash
+MATRIX="blender:8" SEEDS="0" \
+OUTPUT_ROOT="output/mvsdrop/protocol_v1" \
+bash scripts/run_mvsdrop_multiseed.sh
+```
+
+FastGS/StereoGS 等外部结果只作为参考行；除非使用完全相同的数据划分、训练预算
+和 evaluator 重跑，否则不参与本方法的 paired delta 与显著性检验。
+
+协议修订前生成的 `output/mvsinit/*` 不包含完整 protocol identity，且其 manifest
+记录的 commit 早于最终冻结版本；严格汇总器会有意拒绝这些结果。它们可以保留
+为机制诊断，但不能继续与历史 DropGaussian 均值组成正式主表。
+
+以下是 seed 0 的开发集机制验证，不属于上述冻结后的正式配对主表。
+LLFF/Mip-NeRF360/DTU 使用各自既定评估协议；DTU 使用固定 split 和 IDR
+foreground mask。LPIPS 越低越好。
 
 | Dataset | Scene | $r_G$ / $A$ | Baseline PSNR / SSIM / LPIPS | Adaptive PSNR / SSIM / LPIPS | Delta PSNR / SSIM / LPIPS |
 | --- | --- | ---: | --- | --- | --- |

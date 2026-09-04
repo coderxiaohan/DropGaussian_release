@@ -17,12 +17,12 @@ SETTINGS = (
     ("LLFF", "llff", 3, 10000),
     ("LLFF", "llff", 6, 10000),
     ("LLFF", "llff", 9, 10000),
-    ("DTU", "dtu", 3, 30000),
-    ("DTU", "dtu", 6, 30000),
-    ("DTU", "dtu", 9, 30000),
+    ("DTU", "dtu", 3, 10000),
+    ("DTU", "dtu", 6, 10000),
+    ("DTU", "dtu", 9, 10000),
     ("Mip-NeRF360", "mipnerf360", 12, 10000),
     ("Mip-NeRF360", "mipnerf360", 24, 10000),
-    ("Blender", "blender", 8, 7000),
+    ("Blender", "blender", 8, 10000),
 )
 
 SCENES = {
@@ -34,12 +34,30 @@ SCENES = {
 
 METRICS = ("psnr", "ssim", "lpips")
 RESOURCES = ("training_time", "peak_vram", "gaussian_count")
+PROTOCOL_FIELDS = (
+    "dataset_name",
+    "source_path",
+    "resolution",
+    "white_background",
+    "rand_pcd",
+    "n_views",
+    "iterations",
+    "seed",
+    "train_camera_names",
+    "test_camera_names",
+    "base_initialization_sha256",
+)
 
 
 def _summarize_scene_rows(rows: list[dict]) -> dict:
+    commits = {row["git_commit"] for row in rows}
+    if len(commits) != 1:
+        raise ValueError(f"one setting mixes git commits: {sorted(commits)}")
     return {
         "scene_count": len(rows),
         "scenes": rows,
+        "git_commit": next(iter(commits)),
+        "protocols": {row["scene"]: row["protocol"] for row in rows},
         **{
             name: mean(row[name] for row in rows)
             for name in (*METRICS, *RESOURCES)
@@ -58,6 +76,35 @@ def _finite_number(value, *, label: str) -> float:
     if not math.isfinite(number):
         raise ValueError(f"non-finite {label}: {value}")
     return number
+
+
+def _read_protocol(manifest: dict, manifest_path: Path) -> dict:
+    protocol = manifest.get("protocol")
+    if not isinstance(protocol, dict):
+        raise ValueError(f"missing paired protocol identity in {manifest_path}")
+    missing = [field for field in PROTOCOL_FIELDS if field not in protocol]
+    if missing:
+        raise ValueError(
+            f"incomplete paired protocol identity in {manifest_path}: {missing}"
+        )
+    return {field: protocol[field] for field in PROTOCOL_FIELDS}
+
+
+def _validate_pair_identity(baseline: dict, method: dict, *, label: str) -> None:
+    if baseline["git_commit"] != method["git_commit"]:
+        raise ValueError(
+            f"paired runs use different git commits for {label}: "
+            f"{baseline['git_commit']} != {method['git_commit']}"
+        )
+    if baseline["protocols"] != method["protocols"]:
+        mismatches = [
+            scene
+            for scene in sorted(set(baseline["protocols"]) | set(method["protocols"]))
+            if baseline["protocols"].get(scene) != method["protocols"].get(scene)
+        ]
+        raise ValueError(
+            f"paired protocol mismatch for {label}; scenes: {mismatches}"
+        )
 
 
 def load_setting(
@@ -91,6 +138,14 @@ def load_setting(
         }
         if not all(checks.values()):
             raise ValueError(f"protocol mismatch in {manifest_path}: {checks}")
+        git_commit = manifest.get("git_commit")
+        if not isinstance(git_commit, str) or not git_commit:
+            raise ValueError(f"missing git commit in {manifest_path}")
+        if manifest.get("git_dirty") is not False:
+            raise ValueError(
+                f"formal paired evaluation requires a clean checkout: {manifest_path}"
+            )
+        protocol = _read_protocol(manifest, manifest_path)
         metrics = parse_metrics(metrics_path)
         rows.append(
             {
@@ -106,6 +161,8 @@ def load_setting(
                     manifest["gaussian_count"], label="gaussian_count"
                 ),
                 "initialization_source": manifest.get("initialization_source"),
+                "git_commit": git_commit,
+                "protocol": protocol,
             }
         )
     return _summarize_scene_rows(rows)
@@ -148,6 +205,11 @@ def collect(
             )
             if baseline is None or method is None:
                 continue
+            _validate_pair_identity(
+                baseline,
+                method,
+                label=f"seed={seed} {tag}{views}",
+            )
             delta = {
                 "seed": seed,
                 **{

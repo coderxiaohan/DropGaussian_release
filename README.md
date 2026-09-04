@@ -186,6 +186,19 @@ The same environment variables select scenes and resources. For example:
 SCENES="lego chair" GPU_ID=0 bash scripts/train_mvsinit_blender.sh
 ```
 
+For final tables, do not mix historical baseline numbers with a new MVSInit
+run. Use the paired, resumable runner from a clean committed checkout:
+
+```
+SEEDS="0 1 2" bash scripts/run_mvsdrop_multiseed.sh
+```
+
+Both branches then share the same scene split, resolution, iteration budget,
+seed, and base point cloud. Blender random clouds are generated deterministically
+in memory for each run, so concurrent seeds cannot overwrite a shared dataset
+file. Each manifest records the base-cloud hash and complete protocol identity;
+the multi-seed summarizer rejects mismatched or dirty runs.
+
 ### 🎬 Rendering & Evaluation
 You can perform **rendering and evaluation in a single step** using the following command:
 #### 🔹 LLFF Dataset

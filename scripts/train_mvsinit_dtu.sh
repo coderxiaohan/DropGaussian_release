@@ -5,7 +5,7 @@ set -euo pipefail
 # common runner performs rendering and IDR-mask evaluation after training.
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-n_views=${N_VIEWS:-9}
+n_views=${N_VIEWS:-3}
 iterations=${ITERATIONS:-10000}
 resolution=${RESOLUTION:-4}
 output_root=${OUTPUT_ROOT:-$repo_root/output/mvsinit/dtu${n_views}}

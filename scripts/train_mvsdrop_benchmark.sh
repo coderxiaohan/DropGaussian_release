@@ -24,12 +24,13 @@ case "$dataset" in
         resolution=${RESOLUTION:-8}
         iterations=${ITERATIONS:-10000}
         default_scenes="fern flower fortress horns leaves orchids room trex"
+        dataset_args+=(--dataset_name llff)
         ;;
     dtu)
         data_root=${DATA_ROOT:-/home/wuxiaohan/wxh/data/DTU_colmap}
         n_views=${N_VIEWS:-3}
         resolution=${RESOLUTION:-4}
-        iterations=${ITERATIONS:-30000}
+        iterations=${ITERATIONS:-10000}
         default_scenes="scan8 scan21 scan30 scan31 scan34 scan38 scan40 scan41 scan45 scan55 scan63 scan82 scan103 scan110 scan114"
         mask_root=${DTU_MASK_ROOT:-$data_root/idrmasks}
         dataset_args+=(--dataset_name dtu)
@@ -40,14 +41,15 @@ case "$dataset" in
         resolution=${RESOLUTION:-8}
         iterations=${ITERATIONS:-10000}
         default_scenes="bicycle bonsai counter garden kitchen room stump"
+        dataset_args+=(--dataset_name mipnerf360)
         ;;
     blender)
         data_root=${DATA_ROOT:-/home/wuxiaohan/wxh/data/nerf_synthetic}
         n_views=${N_VIEWS:-8}
-        resolution=${RESOLUTION:-2}
-        iterations=${ITERATIONS:-7000}
+        resolution=${RESOLUTION:-1}
+        iterations=${ITERATIONS:-10000}
         default_scenes="chair drums ficus hotdog lego materials mic ship"
-        dataset_args+=(--dataset_name blender --white_background)
+        dataset_args+=(--dataset_name blender --white_background --rand_pcd)
         ;;
     *)
         echo "DATASET must be llff, dtu, mipnerf360, or blender, got: $dataset" >&2

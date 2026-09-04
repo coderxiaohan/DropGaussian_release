@@ -156,14 +156,36 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
 
     torch.cuda.synchronize()
+    repository_root = os.path.dirname(os.path.abspath(__file__))
     try:
         git_commit = subprocess.check_output(
             ["git", "rev-parse", "HEAD"],
-            cwd=os.path.dirname(os.path.abspath(__file__)),
+            cwd=repository_root,
             text=True,
         ).strip()
+        git_dirty = bool(
+            subprocess.check_output(
+                ["git", "status", "--porcelain", "--untracked-files=no"],
+                cwd=repository_root,
+                text=True,
+            ).strip()
+        )
     except (OSError, subprocess.SubprocessError):
         git_commit = None
+        git_dirty = None
+    protocol = {
+        "dataset_name": str(dataset.dataset_name).lower(),
+        "source_path": dataset.source_path,
+        "resolution": int(dataset.resolution),
+        "white_background": bool(dataset.white_background),
+        "rand_pcd": bool(dataset.rand_pcd),
+        "n_views": int(dataset.n_views),
+        "iterations": int(opt.iterations),
+        "seed": int(seed),
+        "train_camera_names": scene.train_camera_names,
+        "test_camera_names": scene.test_camera_names,
+        "base_initialization_sha256": scene.base_initialization_sha256,
+    }
     manifest = {
         "status": "completed",
         "method": (
@@ -189,6 +211,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         "training_time": time.perf_counter() - training_start,
         "peak_vram": int(torch.cuda.max_memory_allocated()),
         "git_commit": git_commit,
+        "git_dirty": git_dirty,
+        "protocol": protocol,
         "command": list(sys.argv),
     }
     with open(os.path.join(dataset.model_path, "manifest.json"), "w") as stream:

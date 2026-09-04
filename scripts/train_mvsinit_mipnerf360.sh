@@ -4,7 +4,7 @@ set -euo pipefail
 # Scene-adaptive MVSInit-DG on Mip-NeRF360.
 
 repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
-n_views=${N_VIEWS:-24}
+n_views=${N_VIEWS:-12}
 iterations=${ITERATIONS:-10000}
 resolution=${RESOLUTION:-8}
 output_root=${OUTPUT_ROOT:-$repo_root/output/mvsinit/mipnerf360${n_views}}

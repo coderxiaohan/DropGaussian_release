@@ -327,8 +327,9 @@ def readNerfSyntheticInfo(
     nerf_normalization = getNerfppNorm(train_cam_infos)
 
     ply_path = os.path.join(path, "points3d.ply")
+    pcd = None
     if rand_pcd:
-        print('Init random point cloud.')
+        print('Init deterministic in-memory random point cloud.')
     if rand_pcd or not os.path.exists(ply_path):
         # Since this data set has no colmap data, we start with random points
         num_pts = 10_000
@@ -339,11 +340,17 @@ def readNerfSyntheticInfo(
         shs = np.random.random((num_pts, 3)) / 255.0
         pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
 
-        storePly(ply_path, xyz, SH2RGB(shs) * 255)
-    try:
-        pcd = fetchPly(ply_path)
-    except:
-        pcd = None
+        # Explicit random initialization belongs to the run, not the shared
+        # dataset.  Keeping it in memory prevents concurrent seeds from
+        # overwriting one another's points3d.ply.  Preserve the legacy cache
+        # creation only when no explicit random initialization was requested.
+        if not rand_pcd:
+            storePly(ply_path, xyz, SH2RGB(shs) * 255)
+    if pcd is None:
+        try:
+            pcd = fetchPly(ply_path)
+        except Exception:
+            pcd = None
 
     scene_info = SceneInfo(point_cloud=pcd,
                            train_cameras=train_cam_infos,

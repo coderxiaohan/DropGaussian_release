@@ -12,6 +12,7 @@
 import os
 import random
 import json
+import hashlib
 import numpy as np
 from utils.system_utils import searchForMaxIteration
 from scene.dataset_readers import sceneLoadTypeCallbacks, storePly
@@ -76,12 +77,29 @@ class Scene:
         else:
             assert False, "Could not recognize scene type!"
 
+        base_digest = hashlib.sha256()
+        for values in (
+            scene_info.point_cloud.points,
+            scene_info.point_cloud.colors,
+        ):
+            array = np.ascontiguousarray(np.asarray(values, dtype=np.float32))
+            base_digest.update(str(array.shape).encode("ascii"))
+            base_digest.update(array.tobytes())
+        self.base_initialization_sha256 = base_digest.hexdigest()
+        self.train_camera_names = [
+            str(camera.image_name) for camera in scene_info.train_cameras
+        ]
+        self.test_camera_names = [
+            str(camera.image_name) for camera in scene_info.test_cameras
+        ]
+
         init_mode = getattr(args, "init_mode", "colmap_dense")
         if init_mode not in ("colmap_dense", "mvs_anywhere"):
             raise ValueError("init_mode must be 'colmap_dense' or 'mvs_anywhere'")
         self.initialization_metadata = {
             "mode": init_mode,
             "path": str(scene_info.ply_path),
+            "base_initialization_sha256": self.base_initialization_sha256,
         }
         adaptive_prior = None
         if not self.loaded_iter and init_mode == "mvs_anywhere":
@@ -188,12 +206,13 @@ class Scene:
             )
             self.initialization_metadata = {
                 "mode": init_mode,
+                "base_initialization_sha256": self.base_initialization_sha256,
                 **mvs_metadata,
             }
 
         if not self.loaded_iter:
             input_path = os.path.join(self.model_path, "input.ply")
-            if init_mode == "mvs_anywhere":
+            if init_mode == "mvs_anywhere" or getattr(args, "rand_pcd", False):
                 input_points = np.asarray(scene_info.point_cloud.points)
                 input_colors = np.asarray(scene_info.point_cloud.colors)
                 if adaptive_prior is not None and adaptive_prior.point_count:
