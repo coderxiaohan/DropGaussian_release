@@ -9,7 +9,8 @@ do
   python train.py -s $dataset_path/$scene/ \
     -m output/raw/$exp_name/$scene \
     --eval -r 8 \
-    --n_views $n_views
+    --n_views $n_views \
+    --init_mode colmap_dense
   
   echo "Rendering $scene..."
   python render.py -m output/raw/$exp_name/$scene -r 8

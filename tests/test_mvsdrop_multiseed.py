@@ -6,60 +6,10 @@ from pathlib import Path
 from scripts.summarize_mvsdrop_multiseed import (
     SCENES,
     collect,
-    is_final_policy_identity,
-    route_dtu_quality_gate,
 )
 
 
 class MVSDropMultiSeedTest(unittest.TestCase):
-    def test_final_policy_identity_settings(self):
-        self.assertTrue(is_final_policy_identity("dtu", 6))
-        self.assertTrue(is_final_policy_identity("dtu", 9))
-        self.assertTrue(is_final_policy_identity("blender", 8))
-        self.assertFalse(is_final_policy_identity("dtu", 3))
-        self.assertFalse(is_final_policy_identity("llff", 9))
-
-    def test_dtu_quality_gate_routes_measured_scene_branches(self):
-        def row(scene, psnr, base_points=None, source_points=None):
-            value = {
-                "scene": scene,
-                "psnr": psnr,
-                "ssim": psnr / 100,
-                "lpips": 1 / psnr,
-                "training_time": psnr,
-                "peak_vram": psnr,
-                "gaussian_count": psnr,
-                "initialization_source": None,
-            }
-            if base_points is not None:
-                value["initialization_source"] = {
-                    "base_point_count": base_points,
-                    "source_point_count": source_points,
-                }
-            return value
-
-        baseline = {
-            "scenes": [row("use", 10), row("skip", 20)],
-        }
-        method = {
-            "scenes": [
-                row("use", 11, 9_000, 120_000),
-                row("skip", 19, 20_000, 1_000_000),
-            ],
-        }
-        routed = route_dtu_quality_gate(baseline, method, views=3)
-        self.assertEqual(routed["routed_mvs_scenes"], ["use"])
-        self.assertEqual(routed["psnr"], 15.5)
-        dense_views = route_dtu_quality_gate(baseline, method, views=6)
-        self.assertEqual(dense_views["routed_mvs_scenes"], [])
-        self.assertEqual(dense_views["psnr"], 15.0)
-
-    def test_dtu_quality_gate_rejects_mismatched_scene_sets(self):
-        baseline = {"scenes": [{"scene": "scan8"}]}
-        method = {"scenes": [{"scene": "scan21"}]}
-        with self.assertRaisesRegex(ValueError, "identical.*scene sets"):
-            route_dtu_quality_gate(baseline, method, views=3)
-
     @staticmethod
     def _write_setting(root: Path, seed: int, mode: str) -> None:
         for scene in SCENES["llff"]:
@@ -111,7 +61,7 @@ class MVSDropMultiSeedTest(unittest.TestCase):
             self.assertFalse(audit["all_settings_complete"])
             self.assertIsNone(audit["goal_pass"])
 
-    def test_identity_passthrough_reuses_complete_baseline_setting(self):
+    def test_adaptive_setting_requires_its_own_measured_branch(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for scene in SCENES["dtu"]:
@@ -138,16 +88,15 @@ class MVSDropMultiSeedTest(unittest.TestCase):
                     ),
                     encoding="utf-8",
                 )
-            rows, _ = collect(root, (1,), replay_final_policy=True)
+            rows, _ = collect(root, (1,))
             dtu6 = next(
                 row
                 for row in rows
                 if row["tag"] == "dtu" and row["views"] == 6
             )
-            self.assertTrue(dtu6["complete"])
-            self.assertEqual(dtu6["evaluation_route"], "identity_passthrough")
-            self.assertEqual(dtu6["delta_psnr"], 0.0)
-            self.assertEqual(dtu6["ratio_training_time"], 1.0)
+            self.assertFalse(dtu6["complete"])
+            self.assertEqual(dtu6["evaluation_route"], "trained_pair")
+            self.assertIsNone(dtu6["delta_psnr"])
 
     def test_incomplete_seed_is_not_aggregated(self):
         with tempfile.TemporaryDirectory() as directory:

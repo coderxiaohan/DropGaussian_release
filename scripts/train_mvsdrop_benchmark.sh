@@ -74,6 +74,14 @@ read -r -a scenes <<< "${SCENES:-$default_scenes}"
 output_root=${OUTPUT_ROOT:-$repo_root/output/mvsdrop/final/$benchmark_mode/${dataset}${n_views}}
 mkdir -p "$output_root"
 
+test_iterations=()
+for percent in 5 10 20 40 70 100; do
+    checkpoint=$(( (iterations * percent + 99) / 100 ))
+    if [[ ${#test_iterations[@]} -eq 0 || ${test_iterations[-1]} -ne $checkpoint ]]; then
+        test_iterations+=("$checkpoint")
+    fi
+done
+
 for scene in "${scenes[@]}"; do
     if [[ "$dataset" == "dtu" ]]; then
         scene=${scene%_colmap}
@@ -92,7 +100,7 @@ for scene in "${scenes[@]}"; do
         CUDA_VISIBLE_DEVICES="$gpu_id" "$python_bin" "$repo_root/train.py" \
             -s "$scene_root" -m "$run_dir" "${dataset_args[@]}" \
             --eval -r "$resolution" --n_views "$n_views" \
-            --iterations "$iterations" --test_iterations "$iterations" \
+            --iterations "$iterations" --test_iterations "${test_iterations[@]}" \
             --save_iterations "$iterations" --seed "$seed" --port "$port" \
             "${extra_args[@]}" "$@" 2>&1 | tee "$run_dir/train.log"
     else

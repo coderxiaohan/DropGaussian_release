@@ -2,19 +2,23 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
+from PIL import Image
 from plyfile import PlyData, PlyElement
 
 from utils.graphics_utils import BasicPointCloud
 from utils.mvs_init import (
+    build_adaptive_mvs_prior,
     fuse_residual_mvs_point_cloud,
     load_mvs_point_cloud,
     resolve_mvs_fusion_budget,
     resolve_mvs_init_point_budget,
     resolve_mvs_init_strategy,
     resolve_mvs_init_path,
-    should_use_dtu_mvs_prior,
+    score_spatial_alignment,
+    score_surface_structure,
 )
 
 
@@ -31,103 +35,23 @@ def _write_ply(path: Path, count: int):
 
 
 class MVSInitTest(unittest.TestCase):
-    def test_dtu_quality_gate_uses_only_input_point_statistics(self):
-        common = {
-            "requested_strategy": "auto",
-            "dataset_name": "dtu",
-            "n_views": 3,
-        }
-        self.assertTrue(
-            should_use_dtu_mvs_prior(
-                base_point_count=9_999,
-                mvs_source_point_count=100_000,
-                **common,
-            )
-        )
-        self.assertFalse(
-            should_use_dtu_mvs_prior(
-                base_point_count=10_000,
-                mvs_source_point_count=1_000_000,
-                **common,
-            )
-        )
-        self.assertFalse(
-            should_use_dtu_mvs_prior(
-                base_point_count=5_000,
-                mvs_source_point_count=99_999,
-                **common,
-            )
-        )
-        self.assertFalse(
-            should_use_dtu_mvs_prior(
-                requested_strategy="auto",
-                dataset_name="dtu",
-                n_views=6,
-                base_point_count=5_000,
-                mvs_source_point_count=1_000_000,
-            )
-        )
-        self.assertTrue(
-            should_use_dtu_mvs_prior(
-                requested_strategy="augment",
-                dataset_name="dtu",
-                n_views=9,
-                base_point_count=50_000,
-                mvs_source_point_count=1,
-            )
-        )
+    def test_auto_strategy_is_always_scene_adaptive(self):
+        self.assertEqual(resolve_mvs_init_strategy("auto"), "adaptive")
+        self.assertEqual(resolve_mvs_init_strategy("adaptive"), "adaptive")
+        self.assertEqual(resolve_mvs_init_strategy("replace"), "replace")
+        self.assertEqual(resolve_mvs_init_strategy("augment"), "augment")
 
-    def test_auto_strategy_uses_only_dataset_and_training_view_count(self):
+    def test_candidate_budget_has_no_dataset_routing(self):
         self.assertEqual(
-            resolve_mvs_init_strategy("auto", n_views=3, is_synthetic=False),
-            "replace",
-        )
-        self.assertEqual(
-            resolve_mvs_init_strategy("auto", n_views=6, is_synthetic=False),
-            "augment",
-        )
-        self.assertEqual(
-            resolve_mvs_init_strategy(
-                "auto", n_views=9, is_synthetic=False, dataset_name="dtu"
-            ),
-            "augment",
-        )
-        self.assertEqual(
-            resolve_mvs_init_strategy("auto", n_views=8, is_synthetic=True),
-            "passthrough",
-        )
-        self.assertEqual(
-            resolve_mvs_init_strategy("replace", n_views=8, is_synthetic=True),
-            "replace",
-        )
-
-    def test_auto_three_view_replacement_uses_lightweight_budget(self):
-        self.assertEqual(
-            resolve_mvs_init_point_budget("auto", "replace", 250_000),
-            100_000,
-        )
-        self.assertEqual(
-            resolve_mvs_init_point_budget(
-                "auto", "augment", 250_000, dataset_name="dtu"
-            ),
-            100_000,
-        )
-        self.assertEqual(
-            resolve_mvs_init_point_budget("auto", "augment", 250_000),
+            resolve_mvs_init_point_budget("auto", "adaptive", 250_000),
             250_000,
-        )
-        self.assertEqual(
-            resolve_mvs_init_point_budget(
-                "auto", "augment", 250_000, dense_base=True
-            ),
-            100_000,
         )
         self.assertEqual(
             resolve_mvs_init_point_budget("replace", "replace", 150_000),
             150_000,
         )
 
-    def test_auto_fusion_budget_uses_fixed_training_input_rules(self):
+    def test_explicit_fusion_budget_has_no_dataset_routing(self):
         common = {
             "configured_total_points": 350_000,
             "dense_base_threshold": 200_000,
@@ -135,21 +59,127 @@ class MVSInitTest(unittest.TestCase):
         }
         self.assertEqual(
             resolve_mvs_fusion_budget(
-                "auto", base_point_count=30_000, dataset_name="dtu", **common
+                "auto", base_point_count=30_000, **common
             ),
-            100_000,
+            350_000,
         )
         self.assertEqual(
             resolve_mvs_fusion_budget(
                 "auto", base_point_count=300_000, **common
             ),
-            400_000,
+            350_000,
         )
         self.assertEqual(
             resolve_mvs_fusion_budget(
                 "auto", base_point_count=100_000, **common
             ),
             350_000,
+        )
+
+    @staticmethod
+    def _gradient_cameras(count=3):
+        width = height = 64
+        yy, xx = np.mgrid[:height, :width]
+        image = np.stack(
+            (xx / (width - 1), yy / (height - 1), np.full_like(xx, 0.5)),
+            axis=-1,
+        )
+        image = Image.fromarray(np.rint(image * 255).astype(np.uint8))
+        cameras = []
+        for index in range(count):
+            cameras.append(
+                SimpleNamespace(
+                    width=width,
+                    height=height,
+                    image=image,
+                    image_name=f"view_{index}",
+                    R=np.eye(3),
+                    T=np.array([0.05 * (index - 1), 0.0, 0.0]),
+                    K=np.array(
+                        [[40.0, 0.0, 32.0], [0.0, 40.0, 32.0], [0.0, 0.0, 1.0]]
+                    ),
+                )
+            )
+        return cameras
+
+    def test_structure_score_separates_surface_from_volume(self):
+        generator = np.random.default_rng(4)
+        xy = generator.uniform(-1.0, 1.0, (4_000, 2))
+        surface_points = np.column_stack((xy, 0.1 * xy[:, 0]))
+        volume_points = generator.uniform(-1.0, 1.0, (4_000, 3))
+        surface = BasicPointCloud(
+            surface_points,
+            np.zeros_like(surface_points),
+            np.zeros_like(surface_points),
+        )
+        volume = BasicPointCloud(
+            volume_points,
+            np.zeros_like(volume_points),
+            np.zeros_like(volume_points),
+        )
+        self.assertGreater(
+            score_surface_structure(surface),
+            score_surface_structure(volume) + 0.1,
+        )
+
+    def test_alignment_score_rejects_counterfactual_coordinates(self):
+        generator = np.random.default_rng(17)
+        xy = generator.uniform(-1.0, 1.0, (4_000, 2))
+        points = np.column_stack((xy, 0.2 * xy[:, 0] - 0.1 * xy[:, 1]))
+        dense_xy = generator.uniform(-1.0, 1.0, (12_000, 2))
+        aligned_points = np.column_stack(
+            (
+                dense_xy,
+                0.2 * dense_xy[:, 0] - 0.1 * dense_xy[:, 1],
+            )
+        )
+        deranged_points = np.column_stack(
+            [
+                aligned_points[generator.permutation(12_000), axis]
+                for axis in range(3)
+            ]
+        )
+        base = BasicPointCloud(points, np.zeros_like(points), np.zeros_like(points))
+        aligned = BasicPointCloud(
+            aligned_points,
+            np.zeros_like(aligned_points),
+            np.zeros_like(aligned_points),
+        )
+        deranged = BasicPointCloud(
+            deranged_points,
+            np.zeros_like(deranged_points),
+            np.zeros_like(deranged_points),
+        )
+        self.assertGreater(
+            score_spatial_alignment(base, aligned),
+            score_spatial_alignment(base, deranged) + 0.2,
+        )
+
+    def test_unstructured_base_degrades_to_no_residual_points(self):
+        generator = np.random.default_rng(5)
+        volume_points = generator.uniform(-1.0, 1.0, (4_000, 3))
+        xy = generator.uniform(-1.0, 1.0, (4_000, 2))
+        mvs_points = np.column_stack((xy, 3.0 + 0.1 * xy[:, 0]))
+        base = BasicPointCloud(
+            volume_points,
+            np.full_like(volume_points, 0.5),
+            np.zeros_like(volume_points),
+        )
+        mvs = BasicPointCloud(
+            mvs_points,
+            np.full_like(mvs_points, 0.5),
+            np.zeros_like(mvs_points),
+        )
+        prior = build_adaptive_mvs_prior(
+            base,
+            mvs,
+            self._gradient_cameras(),
+            cache_path=Path("missing.ply"),
+            max_residual_points=1_000,
+        )
+        self.assertEqual(prior.point_count, 0)
+        self.assertEqual(
+            prior.metadata["fusion_policy"], "adaptive_exact_baseline"
         )
 
     @staticmethod
@@ -175,6 +205,31 @@ class MVSInitTest(unittest.TestCase):
                 root, n_views=3, train_camera_names=["a", "b", "c"]
             )
             self.assertEqual(path, verified)
+            self.assertTrue(provenance)
+
+    def test_resolver_prefers_requested_backend_over_resolution(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            anywhere = (
+                root
+                / "MVSAnywhere_3_views_H_4_W_4_x_init"
+                / "mvs_input.ply"
+            )
+            former = (
+                root
+                / "MVSFormer_3_views_H_8_W_8_x_init"
+                / "mvs_input.ply"
+            )
+            for path in (anywhere, former):
+                _write_ply(path, 2)
+                (path.parent / "mvs_cache_meta.json").write_text(
+                    json.dumps({"view_names": ["a", "b", "c"]}),
+                    encoding="utf-8",
+                )
+            path, _, provenance = resolve_mvs_init_path(
+                root, n_views=3, train_camera_names=["a", "b", "c"]
+            )
+            self.assertEqual(path, anywhere)
             self.assertTrue(provenance)
 
     def test_resolver_rejects_known_split_mismatch(self):

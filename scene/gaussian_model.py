@@ -121,22 +121,82 @@ class GaussianModel:
         if self.active_sh_degree < self.max_sh_degree:
             self.active_sh_degree += 1
 
-    def create_from_pcd(self, pcd : BasicPointCloud, spatial_lr_scale : float):
+    def create_from_pcd(
+        self,
+        pcd: BasicPointCloud,
+        spatial_lr_scale: float,
+        adaptive_prior=None,
+    ):
         self.spatial_lr_scale = spatial_lr_scale
-        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
-        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
+        base_points = np.asarray(pcd.points)
+        base_colors = np.asarray(pcd.colors)
+        prior_count = (
+            int(adaptive_prior.point_count)
+            if adaptive_prior is not None
+            else 0
+        )
+        if prior_count:
+            all_points = np.concatenate(
+                (base_points, adaptive_prior.point_cloud.points), axis=0
+            )
+            all_colors = np.concatenate(
+                (base_colors, adaptive_prior.point_cloud.colors), axis=0
+            )
+        else:
+            all_points = base_points
+            all_colors = base_colors
+        fused_point_cloud = torch.tensor(all_points).float().cuda()
+        fused_color = RGB2SH(torch.tensor(all_colors).float().cuda())
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
         features[:, :3, 0 ] = fused_color
         features[:, 3:, 1:] = 0.0
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
-        scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
+        # Preserve the exact DropGaussian scale computation for every baseline
+        # point.  Residual MVS Gaussians receive the confidence-adaptive PCA
+        # scales prepared by the prior builder.
+        dist2 = torch.clamp_min(
+            distCUDA2(torch.from_numpy(base_points).float().cuda()),
+            0.0000001,
+        )
+        base_scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
+        if prior_count:
+            prior_scales = torch.log(
+                torch.clamp_min(
+                    torch.from_numpy(
+                        np.asarray(adaptive_prior.scales)
+                    ).float().cuda(),
+                    0.0000001,
+                )
+            )
+            scales = torch.cat((base_scales, prior_scales), dim=0)
+        else:
+            scales = base_scales
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
+        if prior_count:
+            rots[-prior_count:] = torch.from_numpy(
+                np.asarray(adaptive_prior.rotations)
+            ).float().cuda()
 
-        opacities = inverse_sigmoid(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
+        base_opacities = 0.1 * torch.ones(
+            (base_points.shape[0], 1), dtype=torch.float, device="cuda"
+        )
+        if prior_count:
+            prior_opacities = torch.from_numpy(
+                np.asarray(adaptive_prior.opacities)
+            ).float().cuda()
+            prior_opacities = torch.clamp(
+                prior_opacities,
+                min=torch.finfo(torch.float32).eps,
+                max=1.0 - torch.finfo(torch.float32).eps,
+            )
+            opacities = inverse_sigmoid(
+                torch.cat((base_opacities, prior_opacities), dim=0)
+            )
+        else:
+            opacities = inverse_sigmoid(base_opacities)
 
         self._xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
         self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
@@ -406,4 +466,3 @@ class GaussianModel:
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
-

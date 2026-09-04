@@ -64,9 +64,6 @@ class ModelParams(ParamGroup):
         self.mvs_init_total_max_points = 350000
         self.mvs_init_dense_base_threshold = 200000
         self.mvs_init_dense_residual_points = 100000
-        self.mvs_init_dtu_max_base_points = 10000
-        self.mvs_init_dtu_min_source_points = 100000
-        self.mvs_final_max_gaussians = 70000
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):

@@ -38,32 +38,6 @@ except ImportError:
     TENSORBOARD_FOUND = False
 
 
-def prune_to_opacity_budget(gaussians, max_gaussians):
-    """Remove the lowest-opacity Gaussians at the final DTU checkpoint."""
-
-    before = int(gaussians.get_xyz.shape[0])
-    budget = int(max_gaussians)
-    if budget <= 0 or before <= budget:
-        return {
-            "policy": "top_opacity",
-            "max_gaussians": budget,
-            "before": before,
-            "after": before,
-        }
-    keep = torch.topk(
-        gaussians._opacity.detach().squeeze(-1), budget, sorted=False
-    ).indices
-    prune_mask = torch.ones(before, device=keep.device, dtype=torch.bool)
-    prune_mask[keep] = False
-    gaussians.prune_points(prune_mask)
-    return {
-        "policy": "top_opacity",
-        "max_gaussians": budget,
-        "before": before,
-        "after": int(gaussians.get_xyz.shape[0]),
-    }
-
-
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, seed):
     torch.cuda.reset_peak_memory_stats()
     training_start = time.perf_counter()
@@ -93,7 +67,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     bg_mask = None
     loss_accum = 0
     pseudo_stack = None
-    final_pruning_metadata = None
+    convergence_curve = []
     for iteration in range(first_iter, opt.iterations + 1):        
         iter_start.record()
 
@@ -136,20 +110,23 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration == opt.iterations:
                 progress_bar.close()
 
-            if (
-                iteration == opt.iterations
-                and dataset.init_mode == "mvs_anywhere"
-                and str(dataset.dataset_name).lower() == "dtu"
-                and scene.initialization_metadata.get("quality_gate", {}).get(
-                    "use_mvs_prior", True
-                )
-            ):
-                final_pruning_metadata = prune_to_opacity_budget(
-                    gaussians, dataset.mvs_final_max_gaussians
-                )
-
             # Log and save
-            training_report(dataset, tb_writer, iteration, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
+            evaluation = training_report(
+                dataset,
+                tb_writer,
+                iteration,
+                loss,
+                l1_loss,
+                iter_start.elapsed_time(iter_end),
+                testing_iterations,
+                scene,
+                render,
+                (pipe, background),
+            )
+            if evaluation is not None:
+                convergence_curve.append(evaluation)
+                with open(os.path.join(dataset.model_path, "convergence.json"), "w") as stream:
+                    json.dump(convergence_curve, stream, indent=2, sort_keys=True)
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
@@ -207,7 +184,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         "completed_iterations": int(opt.iterations),
         "initial_point_count": initial_point_count,
         "gaussian_count": int(gaussians.get_xyz.shape[0]),
-        "final_pruning": final_pruning_metadata,
+        "convergence_curve": convergence_curve,
+        "final_pruning": None,
         "training_time": time.perf_counter() - training_start,
         "peak_vram": int(torch.cuda.max_memory_allocated()),
         "git_commit": git_commit,
@@ -247,14 +225,20 @@ def training_report(args, tb_writer, iteration, loss, l1_loss, elapsed, testing_
     # Report test and samples of training set
     if iteration in testing_iterations:
         torch.cuda.empty_cache()
+        evaluation = {
+            "iteration": int(iteration),
+            "gaussian_count": int(scene.gaussians.get_xyz.shape[0]),
+        }
+        final_evaluation = iteration == max(testing_iterations)
         validation_configs = ({'name': 'test', 'cameras' : scene.getTestCameras()}, 
                               {'name': 'train', 'cameras' : [scene.getTrainCameras()[idx % len(scene.getTrainCameras())] for idx in range(len(scene.getTrainCameras()))]})
 
         for config in validation_configs:
-            render_path = os.path.join(args.model_path, config['name'], "ours_{}".format(iteration), "renders")
-            gts_path = os.path.join(args.model_path, config['name'], "ours_{}".format(iteration), "gt")
-            os.makedirs(render_path, exist_ok=True)
-            os.makedirs(gts_path, exist_ok=True)
+            if final_evaluation:
+                render_path = os.path.join(args.model_path, config['name'], "ours_{}".format(iteration), "renders")
+                gts_path = os.path.join(args.model_path, config['name'], "ours_{}".format(iteration), "gt")
+                os.makedirs(render_path, exist_ok=True)
+                os.makedirs(gts_path, exist_ok=True)
             if config['cameras'] and len(config['cameras']) > 0:
                 l1_test = 0.0
                 psnr_test = 0.0
@@ -268,10 +252,13 @@ def training_report(args, tb_writer, iteration, loss, l1_loss, elapsed, testing_
                             tb_writer.add_images(config['name'] + "_view_{}/ground_truth".format(viewpoint.image_name), gt_image[None], global_step=iteration)
                     l1_test += l1_loss(image, gt_image).mean().double()
                     psnr_test += psnr(image, gt_image).mean().double()
-                    torchvision.utils.save_image(image, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
-                    torchvision.utils.save_image(gt_image, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
+                    if final_evaluation:
+                        torchvision.utils.save_image(image, os.path.join(render_path, '{0:05d}'.format(idx) + ".png"))
+                        torchvision.utils.save_image(gt_image, os.path.join(gts_path, '{0:05d}'.format(idx) + ".png"))
                 psnr_test /= len(config['cameras'])
                 l1_test /= len(config['cameras'])
+                evaluation[config['name'] + "_psnr"] = float(psnr_test.item())
+                evaluation[config['name'] + "_l1"] = float(l1_test.item())
                 print("\n[ITER {}] Evaluating {}: L1 {} PSNR {}".format(iteration, config['name'], l1_test, psnr_test))
                 if tb_writer:
                     tb_writer.add_scalar(config['name'] + '/loss_viewpoint - l1_loss', l1_test, iteration)
@@ -281,6 +268,8 @@ def training_report(args, tb_writer, iteration, loss, l1_loss, elapsed, testing_
             tb_writer.add_histogram("scene/opacity_histogram", scene.gaussians.get_opacity, iteration)
             tb_writer.add_scalar('total_points', scene.gaussians.get_xyz.shape[0], iteration)
         torch.cuda.empty_cache()
+        return evaluation
+    return None
 
 if __name__ == "__main__":
     # Set up command line argument parser

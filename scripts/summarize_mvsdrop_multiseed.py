@@ -9,15 +9,8 @@ import json
 import math
 from pathlib import Path
 from statistics import mean, stdev
-import sys
-
-
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
 
 from scripts.summarize_mvsdrop_setting import parse_metrics
-from utils.mvs_init import should_use_dtu_mvs_prior
 
 
 SETTINGS = (
@@ -43,12 +36,6 @@ METRICS = ("psnr", "ssim", "lpips")
 RESOURCES = ("training_time", "peak_vram", "gaussian_count")
 
 
-def is_final_policy_identity(tag: str, views: int) -> bool:
-    """Return settings where the frozen policy is exactly DropGaussian."""
-
-    return tag == "blender" or (tag == "dtu" and int(views) > 3)
-
-
 def _summarize_scene_rows(rows: list[dict]) -> dict:
     return {
         "scene_count": len(rows),
@@ -57,43 +44,12 @@ def _summarize_scene_rows(rows: list[dict]) -> dict:
             name: mean(row[name] for row in rows)
             for name in (*METRICS, *RESOURCES)
         },
-    }
-
-
-def route_dtu_quality_gate(
-    baseline: dict, method: dict, *, views: int
-) -> dict:
-    """Replay the deterministic DTU gate over fully measured paired branches."""
-
-    baseline_rows = {row["scene"]: row for row in baseline["scenes"]}
-    method_scenes = {row["scene"] for row in method["scenes"]}
-    if set(baseline_rows) != method_scenes:
-        raise ValueError(
-            "DTU gate replay requires identical baseline and method scene sets"
-        )
-    routed_rows = []
-    selected = []
-    for method_row in method["scenes"]:
-        source = method_row.get("initialization_source") or {}
-        required = ("base_point_count", "source_point_count")
-        if not all(name in source for name in required):
-            raise ValueError(
-                f"missing DTU gate provenance for {method_row['scene']}: {required}"
-            )
-        use_mvs = should_use_dtu_mvs_prior(
-            "auto",
-            dataset_name="dtu",
-            n_views=views,
-            base_point_count=source["base_point_count"],
-            mvs_source_point_count=source["source_point_count"],
-        )
-        if use_mvs:
-            selected.append(method_row["scene"])
-        chosen = method_row if use_mvs else baseline_rows[method_row["scene"]]
-        routed_rows.append(chosen)
-    return {
-        **_summarize_scene_rows(routed_rows),
-        "routed_mvs_scenes": selected,
+        "adaptive_fallback_scenes": [
+            row["scene"]
+            for row in rows
+            if (row.get("initialization_source") or {}).get("mvs_point_count")
+            == 0
+        ],
     }
 
 
@@ -162,7 +118,6 @@ def collect(
     max_time_ratio: float = 1.5,
     max_vram_ratio: float = 2.0,
     max_gaussian_ratio: float = 2.0,
-    replay_final_policy: bool = False,
 ) -> tuple[list[dict], dict]:
     rows = []
     complete_deltas = []
@@ -171,7 +126,6 @@ def collect(
             "dataset": dataset,
             "tag": tag,
             "views": views,
-            "routed_mvs_scenes": [],
             "evaluation_route": "trained_pair",
         }
         seed_deltas = []
@@ -184,10 +138,7 @@ def collect(
                 views=views,
                 iteration=iteration,
             )
-            identity_passthrough = (
-                replay_final_policy and is_final_policy_identity(tag, views)
-            )
-            method = baseline if identity_passthrough else load_setting(
+            method = load_setting(
                 root,
                 seed=seed,
                 mode="mvsdrop",
@@ -197,19 +148,6 @@ def collect(
             )
             if baseline is None or method is None:
                 continue
-            if identity_passthrough:
-                row["evaluation_route"] = "identity_passthrough"
-            elif replay_final_policy and tag == "dtu":
-                method = route_dtu_quality_gate(
-                    baseline, method, views=views
-                )
-                row["evaluation_route"] = "input_density_gate"
-                routed_scenes = method["routed_mvs_scenes"]
-                if row["routed_mvs_scenes"] not in ([], routed_scenes):
-                    raise ValueError(
-                        f"DTU gate decision differs between seeds for {views} views"
-                    )
-                row["routed_mvs_scenes"] = routed_scenes
             delta = {
                 "seed": seed,
                 **{
@@ -280,7 +218,7 @@ def collect(
     all_settings_complete = len(complete_deltas) == len(SETTINGS)
     audit = {
         "requested_seeds": list(seeds),
-        "replay_final_policy": replay_final_policy,
+        "policy": "scene_adaptive_reliability",
         "resource_ratio_limits": {
             "training_time": max_time_ratio,
             "peak_vram": max_vram_ratio,
@@ -319,11 +257,7 @@ def _fmt(value, digits=4):
 
 
 def markdown(rows: list[dict], audit: dict) -> str:
-    method_name = (
-        "MVSInit-DG-Gated"
-        if audit.get("replay_final_policy")
-        else "MVSInit-DG"
-    )
+    method_name = "MVSInit-DG-Adaptive"
     lines = [
         "| Dataset | Views | Method | Seeds | PSNR ↑ | SSIM ↑ | LPIPS ↓ |",
         "| --- | ---: | --- | ---: | ---: | ---: | ---: |",
@@ -382,21 +316,6 @@ def main() -> None:
     parser.add_argument("--max-time-ratio", type=float, default=1.5)
     parser.add_argument("--max-vram-ratio", type=float, default=2.0)
     parser.add_argument("--max-gaussian-ratio", type=float, default=2.0)
-    parser.add_argument(
-        "--replay-final-policy",
-        action="store_true",
-        help=(
-            "Replay the frozen input-density gate over measured branches and "
-            "reuse the same baseline checkpoints for identity-passthrough "
-            "settings."
-        ),
-    )
-    parser.add_argument(
-        "--replay-dtu-quality-gate",
-        dest="replay_final_policy",
-        action="store_true",
-        help=argparse.SUPPRESS,
-    )
     args = parser.parse_args()
     seeds = tuple(args.seeds)
     if not seeds or len(set(seeds)) != len(seeds) or min(seeds) < 0:
@@ -416,18 +335,16 @@ def main() -> None:
         max_time_ratio=args.max_time_ratio,
         max_vram_ratio=args.max_vram_ratio,
         max_gaussian_ratio=args.max_gaussian_ratio,
-        replay_final_policy=args.replay_final_policy,
     )
-    suffix = "_gated" if args.replay_final_policy else ""
-    with (root / f"multiseed_matrix{suffix}.csv").open("w", newline="", encoding="utf-8") as stream:
+    with (root / "multiseed_matrix_adaptive.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    (root / f"multiseed_audit{suffix}.json").write_text(
+    (root / "multiseed_audit_adaptive.json").write_text(
         json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     table = markdown(rows, audit)
-    (root / f"multiseed_matrix{suffix}.md").write_text(table, encoding="utf-8")
+    (root / "multiseed_matrix_adaptive.md").write_text(table, encoding="utf-8")
     print(table, end="")
 
 

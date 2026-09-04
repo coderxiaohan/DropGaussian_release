@@ -147,6 +147,45 @@ To train and evaluate on **all MipNeRF-360 scenes**, simply run the script below
 bash scripts/train_mipnerf360.sh
 ```
 
+#### 🔹 DTU Dataset
+
+DTU uses the fixed StereoGS sparse-view split and IDR foreground masks. The
+script performs training, rendering, masked evaluation, and aggregation:
+
+```
+N_VIEWS=3 SCENES="scan21 scan30" GPU_ID=0 bash scripts/train_dtu.sh
+```
+
+Set `DATA_ROOT`, `DTU_MASK_ROOT`, `ITERATIONS`, or `OUTPUT_ROOT` to override
+the defaults. Scene names may be written as either `scan30` or
+`scan30_colmap`.
+
+#### 🔹 Blender / NeRF-Synthetic Dataset
+
+Blender uses the fixed sparse-view split, random point-cloud initialization,
+and a white background:
+
+```
+N_VIEWS=8 SCENES="lego chair" GPU_ID=0 bash scripts/train_blender.sh
+```
+
+The four `train_<dataset>.sh` scripts are reserved for the original
+DropGaussian (`colmap_dense`) baseline. The modified scene-adaptive MVSInit
+implementation has a separate script for every dataset:
+
+```
+bash scripts/train_mvsinit_llff.sh
+bash scripts/train_mvsinit_mipnerf360.sh
+bash scripts/train_mvsinit_dtu.sh
+bash scripts/train_mvsinit_blender.sh
+```
+
+The same environment variables select scenes and resources. For example:
+
+```
+SCENES="lego chair" GPU_ID=0 bash scripts/train_mvsinit_blender.sh
+```
+
 ### 🎬 Rendering & Evaluation
 You can perform **rendering and evaluation in a single step** using the following command:
 #### 🔹 LLFF Dataset
