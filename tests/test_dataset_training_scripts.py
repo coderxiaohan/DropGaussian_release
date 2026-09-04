@@ -50,8 +50,8 @@ class DatasetTrainingScriptsTest(unittest.TestCase):
         self.assertIn(
             "--dataset_name blender --white_background --rand_pcd", runner
         )
-        self.assertIn("if not rand_pcd:", reader)
         self.assertIn("deterministic in-memory random point cloud", reader)
+        self.assertIn("pcd = pointCloudFromPlyValues(xyz, rgb)", reader)
 
     def test_mvsinit_wrapper_defaults_match_baseline_protocol(self):
         for dataset, views in DEFAULT_VIEWS.items():

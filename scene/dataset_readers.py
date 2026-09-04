@@ -178,6 +178,22 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
+def pointCloudFromPlyValues(xyz, rgb):
+    """Build the exact point cloud that storePly/fetchPly would return.
+
+    Synthetic scenes historically wrote their random initialization to a PLY
+    before reading it back.  Reproduce that f4/u1 conversion in memory so
+    paired runs do not mutate a shared dataset file while retaining the
+    original DropGaussian initialization semantics.
+    """
+    positions = np.asarray(xyz, dtype=np.float32)
+    colors = np.asarray(rgb, dtype=np.uint8).astype(np.float64) / 255.0
+    return BasicPointCloud(
+        points=positions,
+        colors=colors,
+        normals=np.zeros_like(positions),
+    )
+
 def readColmapSceneInfo(
     path, images, eval, n_views=3, llffhold=8, dataset_name="auto"
 ):
@@ -338,14 +354,17 @@ def readNerfSyntheticInfo(
         # We create random points inside the bounds of the synthetic Blender scenes
         xyz = np.random.random((num_pts, 3)) * 2 - 1
         shs = np.random.random((num_pts, 3)) / 255.0
-        pcd = BasicPointCloud(points=xyz, colors=SH2RGB(shs), normals=np.zeros((num_pts, 3)))
+        rgb = SH2RGB(shs) * 255
 
         # Explicit random initialization belongs to the run, not the shared
         # dataset.  Keeping it in memory prevents concurrent seeds from
-        # overwriting one another's points3d.ply.  Preserve the legacy cache
-        # creation only when no explicit random initialization was requested.
-        if not rand_pcd:
-            storePly(ply_path, xyz, SH2RGB(shs) * 255)
+        # overwriting one another's points3d.ply.  The in-memory conversion is
+        # exactly equivalent to the legacy PLY write/read path.
+        if rand_pcd:
+            pcd = pointCloudFromPlyValues(xyz, rgb)
+        else:
+            storePly(ply_path, xyz, rgb)
+            pcd = fetchPly(ply_path)
     if pcd is None:
         try:
             pcd = fetchPly(ply_path)
