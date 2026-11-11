@@ -25,6 +25,7 @@ from pathlib import Path
 from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
+from utils.dataset_splits import dtu_split, nerf_synthetic_split, nerf_synthetic_test_split
 
 class CameraInfo(NamedTuple):
     uid: int
@@ -88,9 +89,14 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, path, rgb_mapping):
+def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, path, rgb_mapping, load_names=None):
     cam_infos = []
     for idx, key in enumerate(sorted(cam_extrinsics.keys())):
+        # Preserve original RGB/bounds indices when loading only a named split.
+        if load_names is not None:
+            name = os.path.basename(cam_extrinsics[key].name).split(".")[0]
+            if name not in load_names:
+                continue
         sys.stdout.write('\r')
         # the exact output you're looking for:
         sys.stdout.write("Reading camera {}/{}".format(idx+1, len(cam_extrinsics)))
@@ -148,7 +154,9 @@ def fetchPly(path):
     vertices = plydata['vertex']
     positions = np.vstack([vertices['x'], vertices['y'], vertices['z']]).T
     colors = np.vstack([vertices['red'], vertices['green'], vertices['blue']]).T / 255.0
-    normals = np.vstack([vertices['nx'], vertices['ny'], vertices['nz']]).T
+    names = set(vertices.data.dtype.names or ())
+    normals = (np.vstack([vertices['nx'], vertices['ny'], vertices['nz']]).T
+               if {'nx', 'ny', 'nz'}.issubset(names) else np.zeros_like(positions))
     return BasicPointCloud(points=positions, colors=colors, normals=normals)
 
 def storePly(path, xyz, rgb):
@@ -168,10 +176,12 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, n_views=3, llffhold=8):
-    ply_path = os.path.join(path, "sparse/0/points3D.ply")
+def readColmapSceneInfo(path, images, eval, n_views=3, llffhold=8, dataset_name="auto"):
+    dataset_name = str(dataset_name).lower()
     bin_path = os.path.join(path, "sparse/0/points3D.bin")
-    ply_path = os.path.join(path, str(n_views) + "_views/dense/fused.ply")
+    # The DTU release provides a COLMAP sparse cloud, not LLFF's dense layout.
+    ply_path = (os.path.join(path, "sparse/0/points3D.ply") if dataset_name == "dtu"
+                else os.path.join(path, str(n_views) + "_views/dense/fused.ply"))
 
     try:
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
@@ -198,14 +208,16 @@ def readColmapSceneInfo(path, images, eval, n_views=3, llffhold=8):
                              images_folder=os.path.join(path, reading_dir),  path=path, rgb_mapping=rgb_mapping)
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
-    if eval:
+    if eval and dataset_name == "dtu":
+        train_cam_infos, test_cam_infos = dtu_split(cam_infos, n_views)
+    elif eval:
         train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
         test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
     else:
         train_cam_infos = cam_infos
         test_cam_infos = []
 
-    if n_views > 0:
+    if n_views > 0 and dataset_name != "dtu":
         idx_sub = np.linspace(0, len(train_cam_infos)-1, n_views)
         idx_sub = [round(i) for i in idx_sub]
         train_cam_infos = [c for idx, c in enumerate(train_cam_infos) if idx in idx_sub]
@@ -250,7 +262,7 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
 
             norm_data = im_data / 255.0
             arr = norm_data[:,:,:3] * norm_data[:, :, 3:4] + bg * (1 - norm_data[:, :, 3:4])
-            image = Image.fromarray(np.array(arr*255.0, dtype=np.byte), "RGB")
+            image = Image.fromarray(np.asarray(arr * 255.0, dtype=np.uint8), "RGB")
 
             fovy = focal2fov(fov2focal(fovx, image.size[0]), image.size[1])
             FovY = fovy 
@@ -267,16 +279,20 @@ def readCamerasFromTransforms(path, transformsfile, white_background, extension=
             
     return cam_infos
 
-def readNerfSyntheticInfo(path, white_background, eval, rand_pcd, extension=".png"):
+def readNerfSyntheticInfo(path, white_background, eval, rand_pcd, extension=".png",
+                          *, n_views=8, dataset_name="auto"):
     print("Reading Training Transforms")
     train_cam_infos = readCamerasFromTransforms(path, "transforms_train.json", white_background, extension)
     print("Reading Test Transforms")
     test_cam_infos = readCamerasFromTransforms(path, "transforms_test.json", white_background, extension)
     
     if eval:
-        train_cam_infos = [c for idx, c in enumerate(train_cam_infos) if idx in [2, 16, 26, 55, 73, 76, 86, 93]]
-        eval_cam_infos = [c for idx, c in enumerate(test_cam_infos)]
-        test_cam_infos = test_cam_infos
+        if str(dataset_name).lower() == "blender":
+            train_cam_infos = nerf_synthetic_split(train_cam_infos, n_views)
+            eval_cam_infos = nerf_synthetic_test_split(test_cam_infos)
+        else:
+            train_cam_infos = [c for idx, c in enumerate(train_cam_infos) if idx in [2, 16, 26, 55, 73, 76, 86, 93]]
+            eval_cam_infos = list(test_cam_infos)
     else:
         test_cam_infos = []
         eval_cam_infos = []
@@ -359,4 +375,3 @@ sceneLoadTypeCallbacks = {
     "Blender" : readNerfSyntheticInfo,
     "Replica" : readReplicaSceneInfo
 }
-

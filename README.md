@@ -106,6 +106,39 @@ To train and evaluate on **all MipNeRF-360 scenes**, simply run the script below
 bash scripts/train_mipnerf360.sh
 ```
 
+#### 🔹 Blender / NeRF-Synthetic Dataset
+
+Use the NeRF-Synthetic scene folders containing `transforms_train.json`,
+`transforms_test.json`, and their images. The script selects the first `N_VIEWS`
+of the fixed training indices `[2, 16, 26, 55, 73, 76, 86, 93]`, evaluates every
+eighth test frame, and uses the original 10,000-point random initialization and
+white background.
+
+```bash
+conda activate DropGaussian
+N_VIEWS=8 SCENES="lego chair" GPU_ID=0 bash scripts/train_blender.sh
+```
+
+#### 🔹 DTU Dataset
+
+Use the prepared `DTU_colmap/<scan>_colmap` folders with `images/`,
+`poses_bounds.npy`, COLMAP cameras, and `sparse/0/points3D.ply` or `points3D.bin`.
+The script uses the fixed DTU training/test split from `exp/mvsinit-dg-gated`,
+initializes from the COLMAP sparse cloud, and evaluates with IDR foreground masks.
+Supported training view counts are 3, 6, and 9.
+
+```bash
+N_VIEWS=3 SCENES="scan21 scan30" GPU_ID=0 bash scripts/train_dtu.sh
+```
+
+Both scripts run training, rendering, and metric aggregation with the original
+DropGaussian training code and its fixed random seed 0. Set `DATA_ROOT`,
+`OUTPUT_ROOT`, `PYTHON_BIN`, `RESOLUTION`, or `ITERATIONS` to override their
+defaults; DTU also accepts `DTU_MASK_ROOT` (default: `$DATA_ROOT/idrmasks`).
+Their default outputs are `output/raw/blender8` and `output/raw/dtu3`.
+Use `DRY_RUN=1` to check input paths and print commands without starting training.
+These scripts consume prepared datasets; they do not run COLMAP preprocessing.
+
 ### 🎬 Rendering & Evaluation
 You can perform **rendering and evaluation in a single step** using the following command:
 #### 🔹 LLFF Dataset

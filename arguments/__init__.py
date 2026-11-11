@@ -55,6 +55,7 @@ class ModelParams(ParamGroup):
         self.data_device = "cuda"
         self.eval = False
         self.n_views = 3
+        self.dataset_name = "auto"
         self.rand_pcd = False
         super().__init__(parser, "Loading Parameters", sentinel)
 

@@ -48,9 +48,13 @@ class Scene:
             scene_info = sceneLoadTypeCallbacks["Replica"](args.source_path, args.images, args.eval, args.n_views, args.rand_pcd)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
-            scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval, True)
+            scene_info = sceneLoadTypeCallbacks["Blender"](
+                args.source_path, args.white_background, args.eval, True,
+                n_views=args.n_views, dataset_name=getattr(args, "dataset_name", "auto"))
         elif os.path.exists(os.path.join(args.source_path, "sparse")):
-            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, args.n_views)
+            scene_info = sceneLoadTypeCallbacks["Colmap"](
+                args.source_path, args.images, args.eval, args.n_views,
+                dataset_name=getattr(args, "dataset_name", "auto"))
         else:
             assert False, "Could not recognize scene type!"
 
@@ -103,4 +107,4 @@ class Scene:
         if len(self.pseudo_cameras) == 0:
             return [None]
         else:
-            return self.pseudo_cameras[scale]        
+            return self.pseudo_cameras[scale]
