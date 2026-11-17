@@ -92,6 +92,12 @@ class Scene:
         init_mode = getattr(args, "init_mode", "mvs_anywhere")
         if init_mode not in ("colmap_dense", "mvs_anywhere"):
             raise ValueError("init_mode must be 'colmap_dense' or 'mvs_anywhere'")
+        correction = getattr(args, "mvs_geometry_correction", "none")
+        if not self.loaded_iter:
+            if correction not in ("none", "similarity", "tps", "tps_consistent", "tps_local"):
+                raise ValueError("mvs_geometry_correction must be none, similarity, tps, tps_consistent, or tps_local")
+            if correction != "none" and init_mode != "mvs_anywhere":
+                raise ValueError("MVS geometry correction requires init_mode=mvs_anywhere")
         self.initialization_metadata = {
             "mode": init_mode,
             "path": str(scene_info.ply_path),
@@ -110,6 +116,48 @@ class Scene:
                 explicit_path=args.mvs_init_path,
                 max_points=args.mvs_init_max_points,
             )
+            if correction != "none":
+                # Initialization-only: no change to dropout, loss, optimization,
+                # Gaussian attribute rules, or any VCD/VCP operation.
+                from utils.mvs_geometry import correct_mvs_geometry
+                if not mvs_metadata.get("camera_provenance_verified", False):
+                    raise ValueError("geometry correction requires a training-view-verified MVS cache")
+                geometry_cameras = scene_info.train_cameras
+                calibration_metadata = {"source": "provided_camera_info"}
+                camera_bin = os.path.join(args.source_path, "sparse", "0", "cameras.bin")
+                camera_txt = os.path.join(args.source_path, "sparse", "0", "cameras.txt")
+                if os.path.isfile(camera_bin) or os.path.isfile(camera_txt):
+                    from scene.colmap_loader import read_intrinsics_binary, read_intrinsics_text
+                    from utils.train_view_controls import geometry_cameras_with_intrinsics
+                    intrinsics = (read_intrinsics_binary(camera_bin) if os.path.isfile(camera_bin)
+                                  else read_intrinsics_text(camera_txt))
+                    # The legacy reader misinterprets SIMPLE_* parameter order
+                    # in CameraInfo.K. Parse the model correctly only for this
+                    # new geometry step; renderer/training camera data is untouched.
+                    geometry_cameras, calibration_metadata = geometry_cameras_with_intrinsics(
+                        scene_info.train_cameras, intrinsics,
+                    )
+                mvs_pcd, geometry_metadata, controls = correct_mvs_geometry(
+                    mvs_pcd, geometry_cameras, mode=correction,
+                    max_controls=getattr(args, "mvs_geometry_max_controls", 256),
+                    smoothing=getattr(args, "mvs_geometry_smoothing", 0.001),
+                    max_image_size=getattr(args, "mvs_geometry_max_image_size", 1600),
+                    max_features=getattr(args, "mvs_geometry_max_features", 8000),
+                    ratio=getattr(args, "mvs_geometry_ratio", 0.75),
+                    reprojection_px=getattr(args, "mvs_geometry_reprojection_px", 2.0),
+                    min_angle_deg=getattr(args, "mvs_geometry_min_angle_deg", 1.0),
+                    match_radius_px=getattr(args, "mvs_geometry_match_radius_px", 3.0),
+                    local_neighbors=getattr(args, "mvs_geometry_local_neighbors", 64),
+                )
+                geometry_metadata["calibration"] = calibration_metadata
+                np.savez_compressed(os.path.join(self.model_path, "geometry_controls.npz"), **controls)
+                with open(os.path.join(self.model_path, "geometry_correction.json"), "w") as stream:
+                    json.dump(geometry_metadata, stream, indent=2, sort_keys=True)
+                mvs_metadata["geometry_correction"] = geometry_metadata
+                mvs_metadata["uncorrected_selected_sha256"] = mvs_metadata["selected_sha256"]
+                mvs_metadata["selected_sha256"] = geometry_metadata["output_sha256"]
+                print(f"MVS geometry {correction}: {geometry_metadata['selected_controls']} controls, "
+                      f"median displacement {geometry_metadata['displacement_median']:.6g}")
             scene_info = scene_info._replace(
                 point_cloud=mvs_pcd, ply_path=str(mvs_path)
             )

@@ -61,6 +61,17 @@ class ModelParams(ParamGroup):
         self.mvs_init_path = ""
         self.mvs_init_max_points = 100000
         self.mvs_init_strategy = "replace"
+        # Optional TWINGS-inspired position correction; existing runs stay exact.
+        self.mvs_geometry_correction = "none"
+        self.mvs_geometry_max_controls = 256
+        self.mvs_geometry_smoothing = 0.001
+        self.mvs_geometry_max_image_size = 1600
+        self.mvs_geometry_max_features = 8000
+        self.mvs_geometry_ratio = 0.75
+        self.mvs_geometry_reprojection_px = 2.0
+        self.mvs_geometry_min_angle_deg = 1.0
+        self.mvs_geometry_match_radius_px = 3.0
+        self.mvs_geometry_local_neighbors = 64
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):

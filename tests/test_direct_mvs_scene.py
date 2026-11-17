@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import random
+import sys
 import tempfile
 from types import SimpleNamespace
 import unittest
@@ -183,6 +184,7 @@ class DirectMVSSceneTest(unittest.TestCase):
         # A historical cfg_args strategy describes the old initialization;
         # rendering its trained PLY must not reactivate or require that module.
         self.args.mvs_init_strategy = "adaptive"
+        self.args.mvs_geometry_correction = "tps"
         scene = self.make_scene(load_iteration=10000)
         self.load_mvs.assert_not_called()
         self.store_ply.assert_not_called()
@@ -191,6 +193,97 @@ class DirectMVSSceneTest(unittest.TestCase):
             self.output / "point_cloud" / "iteration_10000" / "point_cloud.ply"
         ))
         self.assertEqual(scene.loaded_iter, 10000)
+
+    def test_optional_correction_receives_only_training_cameras(self):
+        self.args.mvs_geometry_correction = "tps"
+        corrected = _cloud(101.0, 7)
+        info = {"mode": "tps", "output_sha256": "corrected-digest",
+                "selected_controls": 4, "displacement_median": 0.1}
+        arrays = {"source": np.zeros((4, 3)), "target": np.ones((4, 3))}
+        with mock.patch("utils.mvs_geometry.correct_mvs_geometry",
+                        return_value=(corrected, info, arrays)) as correction:
+            scene = self.make_scene()
+        self.assertIs(correction.call_args.args[0], self.mvs)
+        self.assertIs(correction.call_args.args[1], self.train_cameras)
+        self.assertEqual(correction.call_args.kwargs["mode"], "tps")
+        self.gaussians.create_from_pcd.assert_called_once_with(corrected, 2.0)
+        self.assertEqual(scene.initialization_metadata["selected_sha256"], "corrected-digest")
+        self.assertEqual(scene.initialization_metadata["uncorrected_selected_sha256"], "mvs-digest")
+        self.assertEqual(json.loads((self.output / "geometry_correction.json").read_text()), info)
+        with np.load(self.output / "geometry_controls.npz", allow_pickle=False) as values:
+            np.testing.assert_array_equal(values["source"], arrays["source"])
+
+    def test_correction_does_not_silently_fallback_on_failure(self):
+        self.args.mvs_geometry_correction = "tps"
+        with mock.patch("utils.mvs_geometry.correct_mvs_geometry", side_effect=ValueError("degenerate controls")):
+            with self.assertRaisesRegex(ValueError, "degenerate controls"):
+                self.make_scene()
+        self.gaussians.create_from_pcd.assert_not_called()
+        self.store_ply.assert_not_called()
+
+    def test_new_consistent_local_modes_reach_only_initialization(self):
+        for mode in ("tps_consistent", "tps_local"):
+            self.args.mvs_geometry_correction = mode
+            self.args.mvs_geometry_local_neighbors = 32
+            info = {"mode": mode, "output_sha256": "corrected-digest",
+                    "selected_controls": 4, "displacement_median": 0.1}
+            with mock.patch("utils.mvs_geometry.correct_mvs_geometry",
+                            return_value=(self.mvs, info, {})) as correction:
+                self.make_scene()
+            self.assertEqual(correction.call_args.kwargs["mode"], mode)
+            self.assertEqual(correction.call_args.kwargs["local_neighbors"], 32)
+
+    def test_correction_requires_verified_mvs_cache(self):
+        self.args.mvs_geometry_correction = "similarity"
+        self.load_mvs.return_value[2]["camera_provenance_verified"] = False
+        with mock.patch("utils.mvs_geometry.correct_mvs_geometry") as correction:
+            with self.assertRaisesRegex(ValueError, "verified MVS"):
+                self.make_scene()
+        correction.assert_not_called()
+        self.gaussians.create_from_pcd.assert_not_called()
+
+    def test_calibration_repair_is_isolated_to_geometry_cameras(self):
+        self.args.mvs_geometry_correction = "tps"
+        folder = self.source / "sparse" / "0"
+        folder.mkdir()
+        (folder / "cameras.bin").write_bytes(b"test fixture, mocked reader")
+        calibrated = [SimpleNamespace(image_name=c.image_name) for c in self.train_cameras]
+        intrinsics = {1: object()}
+        loader = SimpleNamespace(read_intrinsics_binary=mock.Mock(return_value=intrinsics),
+                                 read_intrinsics_text=mock.Mock())
+        info = {"mode": "tps", "output_sha256": "corrected-digest",
+                "selected_controls": 4, "displacement_median": 0.1}
+        # Resolve/import the real utility modules before patch.dict snapshots
+        # sys.modules. Otherwise its full-dictionary restoration removes these
+        # fresh imports but leaves stale attributes on the utils package, so a
+        # later mock.patch can target a different module than Scene imports.
+        with mock.patch("utils.train_view_controls.geometry_cameras_with_intrinsics",
+                           return_value=(calibrated, {"source": "colmap"})) as calibration, \
+                mock.patch("utils.mvs_geometry.correct_mvs_geometry",
+                           return_value=(self.mvs, info, {})) as correction, \
+                mock.patch.dict(sys.modules, {"scene.colmap_loader": loader}):
+            scene = self.make_scene()
+        calibration.assert_called_once_with(self.train_cameras, intrinsics)
+        self.assertIs(correction.call_args.args[1], calibrated)
+        self.assertIs(self.scene_info.train_cameras, self.train_cameras)
+        self.assertEqual(scene.getTrainCameras(), self.train_cameras)
+        self.assertEqual(scene.initialization_metadata["geometry_correction"]["calibration"],
+                         {"source": "colmap"})
+
+    def test_geometry_mode_is_validated_without_loading_cache(self):
+        for init_mode, mode in (("mvs_anywhere", "bad"), ("colmap_dense", "tps")):
+            self.args.init_mode = init_mode
+            self.args.mvs_geometry_correction = mode
+            with self.assertRaises(ValueError):
+                self.make_scene()
+        self.load_mvs.assert_not_called()
+
+    def test_default_none_skips_matching_and_geometry_artifacts(self):
+        with mock.patch("utils.mvs_geometry.correct_mvs_geometry") as correction:
+            self.make_scene()
+        correction.assert_not_called()
+        self.assertFalse((self.output / "geometry_correction.json").exists())
+        self.assertFalse((self.output / "geometry_controls.npz").exists())
 
 
 class DirectMVSBranchDefaultsTest(unittest.TestCase):
@@ -202,6 +295,7 @@ class DirectMVSBranchDefaultsTest(unittest.TestCase):
         self.assertEqual(args.init_mode, "mvs_anywhere")
         self.assertEqual(args.mvs_init_strategy, "replace")
         self.assertEqual(args.density_control, "vcd_vcp")
+        self.assertEqual(args.mvs_geometry_correction, "none")
         for removed in ("mvs_init_total_max_points", "mvs_init_dense_base_threshold",
                         "mvs_init_dense_residual_points"):
             self.assertFalse(hasattr(args, removed))
