@@ -10,7 +10,7 @@ do
     -m output/raw/$exp_name/$scene \
     --eval -r 8 \
     --n_views $n_views \
-    --init_mode colmap_dense
+    --init_mode colmap_dense --density_control none
   
   echo "Rendering $scene..."
   python render.py -m output/raw/$exp_name/$scene -r 8

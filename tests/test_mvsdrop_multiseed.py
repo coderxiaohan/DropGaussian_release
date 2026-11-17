@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.summarize_mvsdrop_multiseed import (
+from scripts.all.summarize_mvsdrop_multiseed import (
     SCENES,
     collect,
 )
@@ -31,7 +31,7 @@ class MVSDropMultiSeedTest(unittest.TestCase):
         for scene in SCENES["llff"]:
             scene_root = root / f"seed_{seed}" / mode / "llff3" / scene
             scene_root.mkdir(parents=True)
-            method = mode == "mvsdrop"
+            method = mode == "mvs"
             scene_root.joinpath("metrics_10000.txt").write_text(
                 "PSNR : {psnr}\nSSIM : {ssim}\nLPIPS : {lpips}\n".format(
                     psnr=21 if method else 20,
@@ -50,6 +50,11 @@ class MVSDropMultiSeedTest(unittest.TestCase):
                         "iterations": 10000,
                         "metricboost_mode": "dropgaussian",
                         "init_mode": "mvs_anywhere" if method else "colmap_dense",
+                        "initialization_source": {
+                            "resolved_strategy": "replace",
+                            "fusion_policy": "direct_mvs_replace",
+                        } if method else {},
+                        "density_control": {"config": {"mode": "vcd_vcp" if method else "none"}},
                         "training_time": 11 if method else 10,
                         "peak_vram": 120 if method else 100,
                         "gaussian_count": 130 if method else 100,
@@ -68,7 +73,7 @@ class MVSDropMultiSeedTest(unittest.TestCase):
             root = Path(directory)
             for seed in (1, 2):
                 self._write_setting(root, seed, "dropgaussian")
-                self._write_setting(root, seed, "mvsdrop")
+                self._write_setting(root, seed, "mvs")
             rows, audit = collect(root, (1, 2))
             llff3 = rows[0]
             self.assertTrue(llff3["complete"])
@@ -81,8 +86,25 @@ class MVSDropMultiSeedTest(unittest.TestCase):
             self.assertTrue(llff3["resource_pass"])
             self.assertFalse(audit["all_settings_complete"])
             self.assertIsNone(audit["goal_pass"])
+            self.assertEqual(audit["policy"], "direct_mvs_vcd_vcp")
 
-    def test_adaptive_setting_requires_its_own_measured_branch(self):
+    def test_pair_rejects_adaptive_or_density_ablation_as_full_method(self):
+        for variant in ("adaptive", "density_none"):
+            with self.subTest(variant=variant), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self._write_setting(root, 1, "dropgaussian")
+                self._write_setting(root, 1, "mvs")
+                path = root / "seed_1/mvs/llff3/fern/manifest.json"
+                manifest = json.loads(path.read_text(encoding="utf-8"))
+                if variant == "adaptive":
+                    manifest["initialization_source"]["resolved_strategy"] = "adaptive"
+                else:
+                    manifest["density_control"]["config"]["mode"] = "none"
+                path.write_text(json.dumps(manifest), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "protocol mismatch"):
+                    collect(root, (1,))
+
+    def test_method_setting_requires_its_own_measured_branch(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             for scene in SCENES["dtu"]:
@@ -128,8 +150,8 @@ class MVSDropMultiSeedTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self._write_setting(root, 1, "dropgaussian")
-            self._write_setting(root, 1, "mvsdrop")
-            missing = root / "seed_1/mvsdrop/llff3/fern/metrics_10000.txt"
+            self._write_setting(root, 1, "mvs")
+            missing = root / "seed_1/mvs/llff3/fern/metrics_10000.txt"
             missing.unlink()
             rows, _ = collect(root, (1,))
             self.assertFalse(rows[0]["complete"])
@@ -139,8 +161,8 @@ class MVSDropMultiSeedTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             self._write_setting(root, 1, "dropgaussian")
-            self._write_setting(root, 1, "mvsdrop")
-            manifest_path = root / "seed_1/mvsdrop/llff3/fern/manifest.json"
+            self._write_setting(root, 1, "mvs")
+            manifest_path = root / "seed_1/mvs/llff3/fern/manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
             manifest["protocol"]["base_initialization_sha256"] = "different"
             manifest_path.write_text(json.dumps(manifest), encoding="utf-8")

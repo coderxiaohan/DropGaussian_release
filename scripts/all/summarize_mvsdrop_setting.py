@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Aggregate completed per-scene runs for one MVSInit-DG setting."""
+"""Aggregate completed per-scene runs for one baseline or MVSInit-DG setting."""
 
 from __future__ import annotations
 

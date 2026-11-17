@@ -1,20 +1,38 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Matched DropGaussian / MVSInit-DG runner for one dataset-view setting.
+# Common original DropGaussian / direct MVS + VCD/VCP runner for one setting.
 
-repo_root=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
+script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+repo_root=$(cd "$script_dir/../.." && pwd)
 python_bin=${PYTHON_BIN:-python}
-benchmark_mode=${MODE:-mvsdrop}
+benchmark_mode=${MODE:-mvs}
 dataset=${DATASET:-llff}
 gpu_id=${GPU_ID:-0}
 seed=${SEED:-0}
 port=${PORT:-0}
 
-if [[ "$benchmark_mode" != "dropgaussian" && "$benchmark_mode" != "mvsdrop" ]]; then
-    echo "MODE must be dropgaussian or mvsdrop, got: $benchmark_mode" >&2
+if [[ "$benchmark_mode" != "dropgaussian" && "$benchmark_mode" != "mvs" && "$benchmark_mode" != "both" ]]; then
+    echo "MODE must be dropgaussian, mvs, or both; adaptive mvsdrop is not available in this branch (got: $benchmark_mode)." >&2
     exit 2
 fi
+
+# This runner owns the initializer. Remove conflicting values before argparse:
+# a forbidden earlier value would fail validation even when a later one wins.
+train_args=()
+while (( $# )); do
+    case "$1" in
+        --init_mode|--mvs_init_strategy)
+            if (( $# < 2 )) || [[ "$2" == --* ]]; then
+                echo "Missing value for $1" >&2
+                exit 2
+            fi
+            shift 2
+            ;;
+        --init_mode=*|--mvs_init_strategy=*) shift ;;
+        *) train_args+=("$1"); shift ;;
+    esac
+done
 
 dataset_args=()
 case "$dataset" in
@@ -57,23 +75,30 @@ case "$dataset" in
         ;;
 esac
 
-extra_args=(--init_mode colmap_dense)
-if [[ "$benchmark_mode" == "mvsdrop" ]]; then
-    extra_args=(
-        --init_mode mvs_anywhere
-        --mvs_init_max_points "${MVS_INIT_MAX_POINTS:-250000}"
-        --mvs_init_strategy "${MVS_INIT_STRATEGY:-auto}"
-        --mvs_init_total_max_points "${MVS_INIT_TOTAL_MAX_POINTS:-350000}"
-        --mvs_init_dense_base_threshold "${MVS_INIT_DENSE_BASE_THRESHOLD:-200000}"
-        --mvs_init_dense_residual_points "${MVS_INIT_DENSE_RESIDUAL_POINTS:-100000}"
-    )
-    if [[ -n "${MVS_INIT_PATH:-}" ]]; then
-        extra_args+=(--mvs_init_path "$MVS_INIT_PATH")
-    fi
+if [[ "$benchmark_mode" == "both" ]]; then
+    paired_root=${OUTPUT_ROOT:-$repo_root/output/mvs_vcd_vcp/paired}
+    for paired_mode in dropgaussian mvs; do
+        MODE="$paired_mode" OUTPUT_ROOT="$paired_root/$paired_mode/${dataset}${n_views}" \
+            bash "$script_dir/train_mvsdrop_benchmark.sh" "${train_args[@]}"
+    done
+    exit 0
+fi
+
+extra_args=(--density_control "${DENSITY_CONTROL:-none}")
+forced_init_args=(--init_mode colmap_dense)
+if [[ "$benchmark_mode" == "mvs" ]]; then
+    # Direct replacement only. Point-count capping is a resource budget, not a
+    # reliability gate, residual fusion, or confidence-conditioned attribute.
+    extra_args=(--density_control "${DENSITY_CONTROL:-vcd_vcp}"
+        --mvs_init_max_points "${MVS_INIT_MAX_POINTS:-100000}")
+    forced_init_args=(--init_mode mvs_anywhere --mvs_init_strategy replace)
+fi
+if [[ "$benchmark_mode" != "dropgaussian" && -n "${MVS_INIT_PATH:-}" ]]; then
+    extra_args+=(--mvs_init_path "$MVS_INIT_PATH")
 fi
 
 read -r -a scenes <<< "${SCENES:-$default_scenes}"
-output_root=${OUTPUT_ROOT:-$repo_root/output/mvsdrop/final/$benchmark_mode/${dataset}${n_views}}
+output_root=${OUTPUT_ROOT:-$repo_root/output/mvs_vcd_vcp/final/$benchmark_mode/${dataset}${n_views}}
 mkdir -p "$output_root"
 
 test_iterations=()
@@ -104,7 +129,8 @@ for scene in "${scenes[@]}"; do
             --eval -r "$resolution" --n_views "$n_views" \
             --iterations "$iterations" --test_iterations "${test_iterations[@]}" \
             --save_iterations "$iterations" --seed "$seed" --port "$port" \
-            "${extra_args[@]}" "$@" 2>&1 | tee "$run_dir/train.log"
+            "${extra_args[@]}" "${train_args[@]}" "${forced_init_args[@]}" \
+            2>&1 | tee "$run_dir/train.log"
     else
         echo "Skipping completed training for $dataset/$scene."
     fi
@@ -120,7 +146,7 @@ for scene in "${scenes[@]}"; do
     if [[ "$dataset" == "dtu" ]]; then
         echo "Evaluating DTU/$scene with IDR masks..."
         CUDA_VISIBLE_DEVICES="$gpu_id" "$python_bin" \
-            "$repo_root/scripts/evaluate_dtu.py" --model-path "$run_dir" \
+            "$script_dir/evaluate_dtu.py" --model-path "$run_dir" \
             --mask-root "$mask_root" --scene "$scene" --iteration "$iterations" \
             2>&1 | tee "$run_dir/evaluate_${iterations}.log"
     else
@@ -135,6 +161,6 @@ for scene in "${scenes[@]}"; do
     fi
 done
 
-"$python_bin" "$repo_root/scripts/summarize_mvsdrop_setting.py" \
+"$python_bin" "$script_dir/summarize_mvsdrop_setting.py" \
     --experiment-root "$output_root" --iteration "$iterations"
 echo "$benchmark_mode summary: $output_root/metrics_mean.txt"

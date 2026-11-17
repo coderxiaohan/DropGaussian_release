@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Audit complete paired multi-seed MVSInit-DG benchmark runs."""
+"""Audit complete paired DropGaussian versus direct-MVS/VCD/VCP runs."""
 
 from __future__ import annotations
 
@@ -9,8 +9,14 @@ import json
 import math
 from pathlib import Path
 from statistics import mean, stdev
+import sys
 
-from scripts.summarize_mvsdrop_setting import parse_metrics
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.all.summarize_mvsdrop_setting import parse_metrics
 
 
 SETTINGS = (
@@ -62,12 +68,6 @@ def _summarize_scene_rows(rows: list[dict]) -> dict:
             name: mean(row[name] for row in rows)
             for name in (*METRICS, *RESOURCES)
         },
-        "adaptive_fallback_scenes": [
-            row["scene"]
-            for row in rows
-            if (row.get("initialization_source") or {}).get("mvs_point_count")
-            == 0
-        ],
     }
 
 
@@ -128,6 +128,9 @@ def load_setting(
         if manifest.get("status") != "completed":
             return None
         expected_init = "colmap_dense" if mode == "dropgaussian" else "mvs_anywhere"
+        expected_density = "none" if mode == "dropgaussian" else "vcd_vcp"
+        density_mode = (manifest.get("density_control") or {}).get("config", {}).get("mode", "none")
+        initialization = manifest.get("initialization_source") or {}
         checks = {
             "seed": int(manifest.get("seed", -1)) == seed,
             "mask_seed": int(manifest.get("mask_seed", -1)) == seed,
@@ -135,7 +138,13 @@ def load_setting(
             "iterations": int(manifest.get("iterations", -1)) == iteration,
             "loss": manifest.get("metricboost_mode") == "dropgaussian",
             "initialization": manifest.get("init_mode") == expected_init,
+            "density_control": density_mode == expected_density,
         }
+        if mode == "mvs":
+            checks["direct_mvs"] = (
+                initialization.get("resolved_strategy") == "replace"
+                and initialization.get("fusion_policy") == "direct_mvs_replace"
+            )
         if not all(checks.values()):
             raise ValueError(f"protocol mismatch in {manifest_path}: {checks}")
         git_commit = manifest.get("git_commit")
@@ -198,7 +207,7 @@ def collect(
             method = load_setting(
                 root,
                 seed=seed,
-                mode="mvsdrop",
+                mode="mvs",
                 tag=tag,
                 views=views,
                 iteration=iteration,
@@ -280,7 +289,7 @@ def collect(
     all_settings_complete = len(complete_deltas) == len(SETTINGS)
     audit = {
         "requested_seeds": list(seeds),
-        "policy": "scene_adaptive_reliability",
+        "policy": "direct_mvs_vcd_vcp",
         "resource_ratio_limits": {
             "training_time": max_time_ratio,
             "peak_vram": max_vram_ratio,
@@ -319,7 +328,7 @@ def _fmt(value, digits=4):
 
 
 def markdown(rows: list[dict], audit: dict) -> str:
-    method_name = "MVSInit-DG-Adaptive"
+    method_name = "Direct MVS + VCD/VCP"
     lines = [
         "| Dataset | Views | Method | Seeds | PSNR ↑ | SSIM ↑ | LPIPS ↓ |",
         "| --- | ---: | --- | ---: | ---: | ---: | ---: |",
@@ -373,7 +382,7 @@ def markdown(rows: list[dict], audit: dict) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("output/mvsdrop/multiseed"))
+    parser.add_argument("--root", type=Path, default=Path("output/mvs_vcd_vcp/multiseed"))
     parser.add_argument("--seeds", type=int, nargs="+", default=(0, 1, 2))
     parser.add_argument("--max-time-ratio", type=float, default=1.5)
     parser.add_argument("--max-vram-ratio", type=float, default=2.0)
@@ -398,15 +407,15 @@ def main() -> None:
         max_vram_ratio=args.max_vram_ratio,
         max_gaussian_ratio=args.max_gaussian_ratio,
     )
-    with (root / "multiseed_matrix_adaptive.csv").open("w", newline="", encoding="utf-8") as stream:
+    with (root / "multiseed_matrix.csv").open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
-    (root / "multiseed_audit_adaptive.json").write_text(
+    (root / "multiseed_audit.json").write_text(
         json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     table = markdown(rows, audit)
-    (root / "multiseed_matrix_adaptive.md").write_text(table, encoding="utf-8")
+    (root / "multiseed_matrix.md").write_text(table, encoding="utf-8")
     print(table, end="")
 
 

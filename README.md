@@ -40,45 +40,174 @@ opacity = opacity * compensation[:, None]
 ```
 ## ✅ Full implementation
 
-## MVSInit-DG extension
+## Direct MVS + VCD/VCP research branch
 
-This branch adds a small, training-view-only initialization module for sparse
-reconstruction. It keeps DropGaussian's renderer, loss, optimizer, and
-densification schedule unchanged, while combining provenance-checked MVS points
-with the released initializer under fixed point budgets. Automatic DTU fusion
-is quality-gated using training-input point counts: it is enabled only for a
-3-view scene with fewer than 10k COLMAP points and at least 100k MVS candidates.
-Selected DTU models receive one final lowest-opacity pruning step to bound the
-saved Gaussian count; rejected candidates exactly retain the baseline path.
+The current branch, `exp/mvs-vcd-vcp`, keeps two additions to DropGaussian:
+**direct MVS initialization** and the existing **FastGS-inspired VCD/VCP
+density controller**. It is a research fork, not the official FastGS
+implementation. DropGaussian dropout, the photometric objective, learning rates,
+camera splits, and the densification event schedule are unchanged.
 
-The completed three-seed audit passes the frozen target: 9/9 settings are
-complete, 6/9 improve at least two image metrics, mean PSNR gain over all nine
-settings is +0.2546 dB, and every resource gate passes. See the research report
-below for the full table and the distinction between trained, gated, and
-identity branches.
+Adaptive MVS reliability scoring, counterfactual calibration, anchor-based
+admission, baseline-preserving residual fusion, and confidence-dependent
+Gaussian attributes have been removed from this branch. Old paper/report files
+describe the earlier adaptive branch and are historical material, not the method
+implemented here. The previous working state is preserved in Git stash
+`0f821ef35ee65c3953462a62104dfd7af4255c63`; do not apply it on top of this branch
+unless you intend to restore the adaptive implementation.
 
-Run a matched setting with:
+### Initialization: direct MVS only
 
-```bash
-MODE=dropgaussian DATASET=llff N_VIEWS=3 GPU_ID=1 \
-  bash scripts/train_mvsdrop_benchmark.sh
-MODE=mvsdrop DATASET=llff N_VIEWS=3 GPU_ID=1 \
-  bash scripts/train_mvsdrop_benchmark.sh
+For a fresh MVS run, `Scene` loads the cached MVS point cloud and **replaces**
+the original initialization point cloud. All datasets, including Blender, use
+the same policy. The Gaussian initializer uses the ordinary nearest-neighbor
+isotropic scales, identity rotations, and uniform opacity 0.1. There is no
+reliability weighting or automatic fallback to the baseline.
+
+Defaults for direct `train.py` invocation are:
+
+```text
+--init_mode mvs_anywhere --mvs_init_strategy replace
+--mvs_init_max_points 100000 --density_control vcd_vcp
 ```
 
-For the preregistered nine-setting, three-seed evaluation:
+Only `replace` is accepted for a fresh MVS initialization; `auto`, `adaptive`,
+and `augment` are unavailable. The point cap is a uniform resource limit, not
+a learned or confidence-dependent threshold. Original dataset/SfM assets are
+still loaded for cameras and protocol bookkeeping, but their point cloud is
+not appended to the MVS initializer.
+
+Matching MVS caches must already exist; the training scripts **do not run the
+MVSAnywhere network**. The loader searches
+`MVS*_<N>_views_*_init/mvs_input.ply` below the scene, or uses
+`MVS_INIT_PATH`. It rejects known training-view mismatches and missing/empty
+caches. Historical caches without camera metadata are still accepted, with
+`camera_provenance_verified=false`; supply provenance metadata for an audited
+comparison. Nonfinite points are removed. No additional reliability filtering
+is applied to the valid cache points.
+
+### Density control: VCD and VCP
+
+This is the project's independent adaptation of
+[FastGS](https://github.com/fastgs/FastGS) and its
+[sparse-view implementation](https://github.com/fastgs/FastGS/tree/fast-dropgaussian),
+**not an exact reproduction** of their CUDA scoring rules.
+
+- **VCD:** keep the original gradient/size criterion for clone/split, but also
+  require support in high-error regions of at least two distinct training
+  views. A Gaussian's compositing mass must be more concentrated in the
+  high-error mask than the image-wide mask area. This identifies refinement
+  opportunities; it does not prove that every proposed split will improve PSNR.
+- **VCP:** propose points with low contribution in every observed training
+  view, requiring at least two observations; usefulness in any view vetoes a
+  proposal. Remove the candidate batch in a read-only render proxy, then accept
+  only if the current `L1 + lambda_dssim * (1 - SSIM)` loss does not increase
+  in any training view, up to floating-point roundoff.
+
+Diagnostics use all distinct **training** cameras with dropout disabled only
+for those diagnostic renders. Per-point contribution is the rasterizer's
+`alpha * transmittance` mass, measured through a detached color-gradient probe.
+The normal training pass still uses DropGaussian. Original low-opacity/size
+cleanup remains separate and is not covered by VCP's acceptance check.
+No FastGS optimizer, renderer replacement, AbsGS gradients, or loss changes are
+imported.
+
+Shared controls are `--density_min_views 2`,
+`--vcd_error_quantile 0.75`, and `--vcp_contribution_quantile 0.10`.
+These are configurable hyperparameters, not learned quantities.
+Additional diagnostic rendering has a runtime cost: neither FastGS-equivalent
+speed nor improved held-out metrics is guaranteed.
+
+### Run the four datasets
+
+Use the `DropGaussian` environment. GPU IDs below are examples, not a claim
+about free devices:
 
 ```bash
-SEEDS="0 1 2" GPU_ID=1 bash scripts/run_mvsdrop_multiseed.sh
-python scripts/summarize_mvsdrop_multiseed.py \
-  --root output/mvsdrop/multiseed_final --seeds 0 1 2 \
-  --replay-final-policy
+N_VIEWS=3 GPU_ID=0 bash scripts/mvs_vcd_vcp/train_llff.sh
+N_VIEWS=3 GPU_ID=1 bash scripts/mvs_vcd_vcp/train_dtu.sh
+N_VIEWS=12 GPU_ID=2 bash scripts/mvs_vcd_vcp/train_mipnerf360.sh
+N_VIEWS=8 GPU_ID=3 bash scripts/mvs_vcd_vcp/train_blender.sh
 ```
 
-The runner is resumable and records seed, initialization provenance, training
-time, peak allocated VRAM, and final Gaussian count. See
-[`docs/research/mvsdrop_report.md`](docs/research/mvsdrop_report.md) for the
-method, cache contract, ablations, and evidence boundary.
+Each command runs all configured scenes once, then renders and summarizes;
+DTU uses foreground-mask evaluation. Outputs default to
+`output/mvs_vcd_vcp/<dataset><views>/<scene>/`.
+
+| Dataset | Configured scenes | Evaluation view counts | Downsampling | Iterations |
+| --- | ---: | --- | ---: | ---: |
+| LLFF | 8 | 3 / 6 / 9 | 8 | 10,000 |
+| DTU | 15 | 3 / 6 / 9 | 4 | 10,000 |
+| Mip-NeRF360 | 7 | 12 / 24 | 8 | 10,000 |
+| Blender | 8 | 8 | 1 | 10,000 |
+
+`N_VIEWS`, `GPU_ID`, `SCENES`, `DATA_ROOT`, `RESOLUTION`, `ITERATIONS`,
+`PYTHON_BIN`, `OUTPUT_ROOT`, `DTU_MASK_ROOT`, `MVS_INIT_PATH`, and
+`MVS_INIT_MAX_POINTS` remain available. Every requested view count requires
+its corresponding MVS cache. The direct-MVS launchers force the replacement
+policy even if inherited variables or extra CLI flags select another initializer.
+
+Preview all nine settings (91 scene-setting runs, one method):
+
+```bash
+GPU_LLFF=0 GPU_DTU=1 GPU_MIPNERF360=2 GPU_BLENDER=3 \
+  bash scripts/mvs_vcd_vcp/train_all_views.sh --dry-run
+```
+
+Remove `--dry-run` to execute **sequentially**. GPU priority is
+`GPU_<DATASET>_<VIEWS>` > `GPU_<DATASET>` > `GPU_ID` > 0.
+Different GPU IDs do not enable parallel or distributed training. A batch
+`OUTPUT_ROOT` is a parent directory with separate dataset/view subdirectories.
+Do not share one dataset-specific `DATA_ROOT`, `SCENES`, or `MVS_INIT_PATH`
+across a mixed-dataset batch.
+
+### Module ablations and evaluation
+
+Baseline and module-disable switches remain only as experimental controls;
+there is no adaptive MVS implementation to enable.
+
+```bash
+# Direct MVS, original density control
+DENSITY_CONTROL=none bash scripts/mvs_vcd_vcp/train_llff.sh
+# Direct MVS + one density module
+DENSITY_CONTROL=vcd bash scripts/mvs_vcd_vcp/train_llff.sh
+DENSITY_CONTROL=vcp bash scripts/mvs_vcd_vcp/train_llff.sh
+# Original initialization + VCD/VCP, no added MVSAnywhere
+bash scripts/dropgaussian_vcd_vcp/train_llff.sh
+# Original DropGaussian initialization and density control
+bash scripts/train_llff.sh
+```
+
+Density variants use separate `output/mvs_<mode>/` or
+`output/dropgaussian_<mode>/` roots. Always use a fresh `OUTPUT_ROOT` when
+changing other hyperparameters: completed outputs may otherwise be skipped.
+`scripts/vcd_vcp/` and `scripts/train_mvsinit_<dataset>.sh` are direct-MVS
+compatibility entries on this branch, not adaptive entries.
+`scripts/mvs/` retains direct MVS with original density control as an ablation.
+
+The paired workflow in `scripts/all/` now compares original DropGaussian with
+direct MVS + VCD/VCP, using matching splits, resolution, iterations, and recorded
+random state. It runs once per method/scene/setting (182 runs), not multiple
+trials:
+
+```bash
+bash scripts/all/run_all.sh --dry-run
+# Requires a clean committed checkout before actual paired evaluation:
+GPU_ID=0 bash scripts/all/run_all.sh
+```
+
+Some helper filenames retain `mvsdrop` for compatibility, but `MODE=mvsdrop`
+is rejected. Supported per-setting modes are `mvs`, `dropgaussian`, and
+`both`. Historical adaptive results must not be reused as direct-MVS results.
+Paper/report files have not been rewritten or presented as new experimental
+evidence.
+
+Enabled runs record `density_control.jsonl` and a `manifest.json` containing
+initialization provenance, density settings/events, protocol, wall-clock time,
+peak VRAM, and final point count. Checkpoint formats remain unchanged: repeat
+the same density settings on resume. Checkpoint training still constructs the
+initial scene before restoring its state, so keep the initialization cache;
+rendering an already trained PLY does not load an MVS cache.
 
 ### 📦 Installation
 We provide an installation using Conda package and environment management:
@@ -124,90 +253,21 @@ You can download them via the link below:
 
 ### 🧪 Training
 
-#### 🔹 LLFF Dataset
-
-To train on a single LLFF scene, use the following command:
-
-```
-python train.py -s ${DATASET_PATH} -m ${OUTPUT_PATH} --eval -r 8 --n_views {3 or 6 or 9}
-```
-To train and evaluate on **all LLFF scenes**, simply run the script below:
-```
-bash scripts/train_llff.sh
-```
-#### 🔹 MipNeRF-360 Dataset
-
-To train on a single MipNeRF-360 scene, use the following command:
-
-```
-python train.py -s ${DATASET_PATH} -m ${OUTPUT_PATH} --eval -r 8 --n_views {12 or 24}
-```
-To train and evaluate on **all MipNeRF-360 scenes**, simply run the script below:
-```
-bash scripts/train_mipnerf360.sh
-```
-
-#### 🔹 DTU Dataset
-
-DTU uses the fixed StereoGS sparse-view split and IDR foreground masks. The
-script performs training, rendering, masked evaluation, and aggregation:
-
-```
-N_VIEWS=3 SCENES="scan21 scan30" GPU_ID=0 bash scripts/train_dtu.sh
-```
-
-Set `DATA_ROOT`, `DTU_MASK_ROOT`, `ITERATIONS`, or `OUTPUT_ROOT` to override
-the defaults. Scene names may be written as either `scan30` or
-`scan30_colmap`.
-
-#### 🔹 Blender / NeRF-Synthetic Dataset
-
-Blender uses the fixed sparse-view split, random point-cloud initialization,
-and a white background:
-
-```
-N_VIEWS=8 SCENES="lego chair" GPU_ID=0 bash scripts/train_blender.sh
-```
-
-The four `train_<dataset>.sh` scripts are reserved for the original
-DropGaussian (`colmap_dense`) baseline. The modified scene-adaptive MVSInit
-implementation has a separate script for every dataset:
-
-```
-bash scripts/train_mvsinit_llff.sh
-bash scripts/train_mvsinit_mipnerf360.sh
-bash scripts/train_mvsinit_dtu.sh
-bash scripts/train_mvsinit_blender.sh
-```
-
-The same environment variables select scenes and resources. For example:
-
-```
-SCENES="lego chair" GPU_ID=0 bash scripts/train_mvsinit_blender.sh
-```
-
-For final tables, do not mix historical baseline numbers with a new MVSInit
-run. Use the paired, resumable runner from a clean committed checkout:
-
-```
-SEEDS="0 1 2" bash scripts/run_mvsdrop_multiseed.sh
-```
-
-Both branches then share the same scene split, resolution, iteration budget,
-seed, and base point cloud. Blender random clouds are generated deterministically
-in memory for each run, so concurrent seeds cannot overwrite a shared dataset
-file. Each manifest records the base-cloud hash and complete protocol identity;
-the multi-seed summarizer rejects mismatched or dirty runs.
+The direct-MVS + VCD/VCP commands and all-view matrix above are the recommended
+entries for this branch. Original `scripts/train_<dataset>.sh` commands are
+baseline controls and explicitly disable the two density modules. The original
+COLMAP preprocessing below is still relevant to baseline assets and camera
+loading; direct MVS experiments additionally require the precomputed MVS cache.
 
 ### 🎬 Rendering & Evaluation
 You can perform **rendering and evaluation in a single step** using the following command:
 #### 🔹 LLFF Dataset
 ```
-python render.py -s -m ${MODEL_PATH} --eval -r 8
+python render.py -m ${MODEL_PATH} --eval -r 8
 ```
 #### 🔹 MipNeRF-360 Dataset
 ```
-python render.py -s -m ${MODEL_PATH} --eval -r 8
+python render.py -m ${MODEL_PATH} --eval -r 8
 ```
 
 ## License

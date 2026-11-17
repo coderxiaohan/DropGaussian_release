@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create the requested DropGaussian versus MVSInit-DG result matrix."""
+"""Create the DropGaussian versus direct-MVS/VCD/VCP result matrix."""
 
 from __future__ import annotations
 
@@ -10,11 +10,11 @@ from pathlib import Path
 import sys
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from scripts.summarize_mvsdrop_setting import parse_metrics
+from scripts.all.summarize_mvsdrop_setting import parse_metrics
 
 
 MATRIX = (
@@ -58,7 +58,7 @@ def collect_matrix(root: Path, baseline_root: Path | None = None) -> list[dict]:
     rows = []
     for dataset, tag, n_views in MATRIX:
         row = {"dataset": dataset, "views": n_views}
-        for label, directory in (("baseline", "dropgaussian"), ("method", "mvsdrop")):
+        for label, directory in (("baseline", "dropgaussian"), ("method", "mvs")):
             local_result_dir = root / directory / f"{tag}{n_views}"
             if label == "baseline" and baseline_root:
                 values = parse_complete_metrics(
@@ -96,7 +96,7 @@ def markdown_table(rows: list[dict]) -> str:
     for row in rows:
         for label, name in (
             ("baseline", "DropGaussian"),
-            ("method", "MVSInit-DG"),
+            ("method", "Direct MVS + VCD/VCP"),
         ):
             lines.append(
                 "| {dataset} | {views} | {name} | {psnr} | {ssim} | {lpips} |".format(
@@ -113,7 +113,7 @@ def markdown_table(rows: list[dict]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", type=Path, default=Path("output/mvsdrop/final"))
+    parser.add_argument("--root", type=Path, default=Path("output/mvs_vcd_vcp/final"))
     parser.add_argument(
         "--baseline-root",
         type=Path,

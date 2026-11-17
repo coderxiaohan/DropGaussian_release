@@ -26,6 +26,7 @@ from utils.general_utils import safe_state
 import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr
+from utils.view_consistent_density import DensityControlConfig, evaluate_density_control
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 from torchvision.utils import save_image
@@ -39,6 +40,7 @@ except ImportError:
 
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, seed):
+    density_config = DensityControlConfig.from_options(opt)
     torch.cuda.reset_peak_memory_stats()
     training_start = time.perf_counter()
     first_iter = 0
@@ -68,6 +70,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     loss_accum = 0
     pseudo_stack = None
     convergence_curve = []
+    density_events = []
+    density_log_path = os.path.join(dataset.model_path, "density_control.jsonl")
+    if density_config.mode != "none":
+        # Explicit fresh/resume boundary, independent of the legacy checkpoint.
+        with open(density_log_path, "a" if checkpoint else "w") as stream:
+            stream.write(json.dumps({"event": "start", "first_iteration": first_iter,
+                                     "config": density_config.as_dict(),
+                                     "checkpoint": checkpoint}) + "\n")
     for iteration in range(first_iter, opt.iterations + 1):        
         iter_start.record()
 
@@ -141,7 +151,31 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = None
-                    gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+                    if density_config.mode == "none":
+                        gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+                    else:
+                        torch.cuda.synchronize()
+                        density_started = time.perf_counter()
+                        decision = evaluate_density_control(
+                            gaussians, scene.getTrainCameras(), pipe, background,
+                            density_config, opt.lambda_dssim,
+                        )
+                        changes = gaussians.densify_and_prune_view_consistent(
+                            opt.densify_grad_threshold, 0.005, scene.cameras_extent,
+                            size_threshold, densify_mask=decision.densify_mask,
+                            prune_mask=decision.prune_mask,
+                        )
+                        torch.cuda.synchronize()
+                        event = {"iteration": iteration, **decision.diagnostics,
+                                 "topology": changes,
+                                 "elapsed_seconds": time.perf_counter() - density_started}
+                        density_events.append(event)
+                        with open(density_log_path, "a") as stream:
+                            stream.write(json.dumps(event, sort_keys=True) + "\n")
+                        if tb_writer:
+                            tb_writer.add_scalar("density/vcd_supported", event["vcd_supported"], iteration)
+                            tb_writer.add_scalar("density/vcp_verified", event["vcp_verified"], iteration)
+                            tb_writer.add_scalar("density/seconds", event["elapsed_seconds"], iteration)
                 
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
@@ -189,7 +223,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     manifest = {
         "status": "completed",
         "method": (
-            "MVSInit-DG"
+            "DirectMVS-DG"
             if dataset.init_mode == "mvs_anywhere"
             else "DropGaussian"
         ),
@@ -215,6 +249,18 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         "protocol": protocol,
         "command": list(sys.argv),
     }
+    if density_config.mode != "none":
+        manifest["method"] += "+" + density_config.mode.upper()
+        manifest["density_control"] = {
+            "config": density_config.as_dict(),
+            "events": density_events,
+            "events_scope": "current_invocation",
+            "first_iteration": first_iter,
+            "start_checkpoint": checkpoint,
+            "event_log": density_log_path,
+            "diagnostic_views": "all_distinct_training_views",
+            "dropout_during_diagnostics": False,
+        }
     with open(os.path.join(dataset.model_path, "manifest.json"), "w") as stream:
         json.dump(manifest, stream, indent=2, sort_keys=True)
 

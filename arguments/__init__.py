@@ -57,13 +57,10 @@ class ModelParams(ParamGroup):
         self.n_views = 3
         self.dataset_name = "auto"
         self.rand_pcd = False
-        self.init_mode = "colmap_dense"
+        self.init_mode = "mvs_anywhere"
         self.mvs_init_path = ""
-        self.mvs_init_max_points = 250000
-        self.mvs_init_strategy = "auto"
-        self.mvs_init_total_max_points = 350000
-        self.mvs_init_dense_base_threshold = 200000
-        self.mvs_init_dense_residual_points = 100000
+        self.mvs_init_max_points = 100000
+        self.mvs_init_strategy = "replace"
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
@@ -97,6 +94,11 @@ class OptimizationParams(ParamGroup):
         self.densify_until_iter = 10000
         self.densify_grad_threshold = 0.0005
         self.random_background = False
+        # Direct-MVS branch default; "none" is retained for density ablations.
+        self.density_control = "vcd_vcp"
+        self.density_min_views = 2
+        self.vcd_error_quantile = 0.75
+        self.vcp_contribution_quantile = 0.10
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):

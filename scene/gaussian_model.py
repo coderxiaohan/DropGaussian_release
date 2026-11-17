@@ -125,78 +125,30 @@ class GaussianModel:
         self,
         pcd: BasicPointCloud,
         spatial_lr_scale: float,
-        adaptive_prior=None,
     ):
         self.spatial_lr_scale = spatial_lr_scale
-        base_points = np.asarray(pcd.points)
-        base_colors = np.asarray(pcd.colors)
-        prior_count = (
-            int(adaptive_prior.point_count)
-            if adaptive_prior is not None
-            else 0
-        )
-        if prior_count:
-            all_points = np.concatenate(
-                (base_points, adaptive_prior.point_cloud.points), axis=0
-            )
-            all_colors = np.concatenate(
-                (base_colors, adaptive_prior.point_cloud.colors), axis=0
-            )
-        else:
-            all_points = base_points
-            all_colors = base_colors
-        fused_point_cloud = torch.tensor(all_points).float().cuda()
-        fused_color = RGB2SH(torch.tensor(all_colors).float().cuda())
+        points = np.asarray(pcd.points)
+        fused_point_cloud = torch.tensor(points).float().cuda()
+        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
         features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
         features[:, :3, 0 ] = fused_color
         features[:, 3:, 1:] = 0.0
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        # Preserve the exact DropGaussian scale computation for every baseline
-        # point.  Residual MVS Gaussians receive the confidence-adaptive PCA
-        # scales prepared by the prior builder.
+        # Direct MVS points use the original DropGaussian attributes: isotropic
+        # KNN scales, identity rotations, and a uniform initial opacity of 0.1.
         dist2 = torch.clamp_min(
-            distCUDA2(torch.from_numpy(base_points).float().cuda()),
+            distCUDA2(torch.from_numpy(points).float().cuda()),
             0.0000001,
         )
-        base_scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
-        if prior_count:
-            prior_scales = torch.log(
-                torch.clamp_min(
-                    torch.from_numpy(
-                        np.asarray(adaptive_prior.scales)
-                    ).float().cuda(),
-                    0.0000001,
-                )
-            )
-            scales = torch.cat((base_scales, prior_scales), dim=0)
-        else:
-            scales = base_scales
+        scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
         rots[:, 0] = 1
-        if prior_count:
-            rots[-prior_count:] = torch.from_numpy(
-                np.asarray(adaptive_prior.rotations)
-            ).float().cuda()
 
-        base_opacities = 0.1 * torch.ones(
-            (base_points.shape[0], 1), dtype=torch.float, device="cuda"
+        opacities = inverse_sigmoid(
+            0.1 * torch.ones((points.shape[0], 1), dtype=torch.float, device="cuda")
         )
-        if prior_count:
-            prior_opacities = torch.from_numpy(
-                np.asarray(adaptive_prior.opacities)
-            ).float().cuda()
-            prior_opacities = torch.clamp(
-                prior_opacities,
-                min=torch.finfo(torch.float32).eps,
-                max=1.0 - torch.finfo(torch.float32).eps,
-            )
-            opacities = inverse_sigmoid(
-                torch.cat((base_opacities, prior_opacities), dim=0)
-            )
-        else:
-            opacities = inverse_sigmoid(base_opacities)
 
         self._xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
         self._features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
@@ -407,7 +359,7 @@ class GaussianModel:
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         self.max_radii2D = torch.cat([self.max_radii2D, torch.zeros(self.get_xyz.shape[0]-self.max_radii2D.shape[0]).to(self.max_radii2D)])
 
-    def densify_and_split(self, grads, grad_threshold, scene_extent, N=2):
+    def densify_and_split(self, grads, grad_threshold, scene_extent, N=2, selection_mask=None):
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         padded_grad = torch.zeros((n_init_points), device="cuda")
@@ -415,6 +367,16 @@ class GaussianModel:
         selected_pts_mask = torch.where(padded_grad >= grad_threshold, True, False)
         selected_pts_mask = torch.logical_and(selected_pts_mask,
                                               torch.max(self.get_scaling, dim=1).values > self.percent_dense*scene_extent)
+        if selection_mask is not None:
+            self._validate_density_mask(selection_mask, grads.shape[0], "selection_mask")
+            # Gradients and decisions refer to the pre-clone population. New
+            # clones must not become split candidates in this same event.
+            padded_selection = torch.zeros_like(selected_pts_mask)
+            padded_selection[:selection_mask.shape[0]] = selection_mask
+            selected_pts_mask = torch.logical_and(selected_pts_mask, padded_selection)
+            selected_count = int(selected_pts_mask.sum().item())
+            if selected_count == 0:
+                return 0
 
         stds = self.get_scaling[selected_pts_mask].repeat(N,1)
         means =torch.zeros((stds.size(0), 3),device="cuda")
@@ -431,12 +393,20 @@ class GaussianModel:
 
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
+        if selection_mask is not None:
+            return selected_count
 
-    def densify_and_clone(self, grads, grad_threshold, scene_extent):
+    def densify_and_clone(self, grads, grad_threshold, scene_extent, selection_mask=None):
         # Extract points that satisfy the gradient condition
         selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
         selected_pts_mask = torch.logical_and(selected_pts_mask,    # self.percent_dense = 0.01
                             torch.max(self.get_scaling, dim=1).values <= self.percent_dense*scene_extent)
+        if selection_mask is not None:
+            self._validate_density_mask(selection_mask, self.get_xyz.shape[0], "selection_mask")
+            selected_pts_mask = torch.logical_and(selected_pts_mask, selection_mask)
+            selected_count = int(selected_pts_mask.sum().item())
+            if selected_count == 0:
+                return 0
         
         new_xyz = self._xyz[selected_pts_mask]
         new_features_dc = self._features_dc[selected_pts_mask]
@@ -446,6 +416,8 @@ class GaussianModel:
         new_rotation = self._rotation[selected_pts_mask]
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation)
+        if selection_mask is not None:
+            return selected_count
 
     def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size):
         grads = self.xyz_gradient_accum / self.denom
@@ -462,6 +434,124 @@ class GaussianModel:
         self.prune_points(prune_mask)
 
         torch.cuda.empty_cache()
+
+    def _validate_density_mask(self, mask, count, name):
+        if not isinstance(mask, torch.Tensor):
+            raise TypeError(f"{name} must be a torch.Tensor")
+        if mask.dtype != torch.bool:
+            raise TypeError(f"{name} must have bool dtype")
+        if mask.ndim != 1 or mask.shape[0] != count:
+            raise ValueError(f"{name} must have shape [{count}]")
+        if mask.device != self.get_xyz.device:
+            raise ValueError(f"{name} must be on {self.get_xyz.device}")
+
+    def _protect_last_density_point(self, prune_mask):
+        """Keep a finite highest-opacity point if a density event removes all.
+
+        Only used by the opt-in view-consistent path. Refuse an entirely
+        non-finite model instead of silently selecting an invalid survivor.
+        """
+        if prune_mask.numel() == 0 or not bool(prune_mask.all().item()):
+            return prune_mask, False
+        opacity = self.get_opacity.detach().flatten()
+        finite = torch.isfinite(opacity)
+        for values in (
+            self._xyz, self._features_dc, self._features_rest,
+            self._scaling, self._rotation, self._opacity,
+        ):
+            finite &= torch.isfinite(values.detach().flatten(start_dim=1)).all(dim=1)
+        if not bool(finite.any().item()):
+            raise RuntimeError("Density control cannot retain a finite Gaussian")
+        survivor = torch.where(finite, opacity, torch.full_like(opacity, -torch.inf)).argmax()
+        protected_mask = prune_mask.clone()
+        protected_mask[survivor] = False
+        return protected_mask, True
+
+    @torch.no_grad()
+    def densify_and_prune_view_consistent(
+        self, max_grad, min_opacity, extent, max_screen_size,
+        densify_mask=None, prune_mask=None,
+    ):
+        """Apply train-view decisions to the *original* population of an event.
+
+        ``densify_mask`` gates the original gradient/size clone-split rules;
+        ``prune_mask`` requests direct VCP removal. Both are boolean [N]
+        tensors on the model device. VCP wins if their supports overlap.
+        Newborn Gaussians are never subject to stale original-row decisions.
+        Ordinary low-opacity/size cleanup remains active. No persistent
+        statistics are added, so legacy checkpoints retain their format.
+        """
+        original_count = int(self.get_xyz.shape[0])
+        device = self.get_xyz.device
+        if densify_mask is None:
+            densify_mask = torch.ones(original_count, dtype=torch.bool, device=device)
+        else:
+            self._validate_density_mask(densify_mask, original_count, "densify_mask")
+        if prune_mask is None:
+            prune_mask = torch.zeros(original_count, dtype=torch.bool, device=device)
+        else:
+            self._validate_density_mask(prune_mask, original_count, "prune_mask")
+        densify_mask = densify_mask & ~prune_mask
+        summary = {
+            "input_count": original_count,
+            "vcd_candidates": int(densify_mask.sum().item()),
+            "vcp_requested": int(prune_mask.sum().item()),
+            "vcp_pruned": 0,
+            "cloned": 0,
+            "split_parents": 0,
+            "split_children": 0,
+            "cleanup_pruned": 0,
+            "output_count": original_count,
+            "prune_all_guard": False,
+        }
+        if original_count == 0:
+            return summary
+
+        grads = torch.nan_to_num(
+            self.xyz_gradient_accum / self.denom,
+            nan=0.0, posinf=0.0, neginf=0.0,
+        )
+        prune_mask, protected = self._protect_last_density_point(prune_mask)
+        summary["prune_all_guard"] = protected
+        summary["vcp_pruned"] = int(prune_mask.sum().item())
+        if summary["vcp_pruned"]:
+            keep_mask = ~prune_mask
+            grads = grads[keep_mask]
+            densify_mask = densify_mask[keep_mask]
+            self.prune_points(prune_mask)
+
+        summary["cloned"] = self.densify_and_clone(
+            grads, max_grad, extent, selection_mask=densify_mask,
+        )
+        summary["split_parents"] = self.densify_and_split(
+            grads, max_grad, extent, selection_mask=densify_mask,
+        )
+        summary["split_children"] = 2 * summary["split_parents"]
+
+        cleanup_mask = (self.get_opacity < min_opacity).flatten()
+        if max_screen_size:
+            big_points_vs = self.max_radii2D > max_screen_size
+            big_points_ws = self.get_scaling.max(dim=1).values > 0.1 * extent
+            cleanup_mask = torch.logical_or(
+                torch.logical_or(cleanup_mask, big_points_vs), big_points_ws,
+            )
+        cleanup_mask, protected = self._protect_last_density_point(cleanup_mask)
+        summary["prune_all_guard"] |= protected
+        summary["cleanup_pruned"] = int(cleanup_mask.sum().item())
+        if summary["cleanup_pruned"]:
+            self.prune_points(cleanup_mask)
+
+        # Legacy ADC replaces every Parameter even for empty topology edits,
+        # discarding this iteration's pending gradients before optimizer.step.
+        # Match that effective update schedule for enabled no-op events too;
+        # retain Parameter identities/Adam moments without adding an update.
+        self.optimizer.zero_grad(set_to_none=True)
+        self.xyz_gradient_accum.zero_()
+        self.denom.zero_()
+        self.max_radii2D.zero_()
+        summary["output_count"] = int(self.get_xyz.shape[0])
+        torch.cuda.empty_cache()
+        return summary
 
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)

@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from scripts.summarize_mvsdrop_matrix import collect_matrix, markdown_table
+from scripts.all.summarize_mvsdrop_matrix import collect_matrix, markdown_table
 
 
 class MVSDropMatrixTest(unittest.TestCase):
@@ -11,7 +11,7 @@ class MVSDropMatrixTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "method"
             baseline = Path(directory) / "baseline"
-            method_dir = root / "mvsdrop" / "llff3"
+            method_dir = root / "mvs" / "llff3"
             baseline_dir = baseline / "llff3"
             method_dir.mkdir(parents=True)
             baseline_dir.mkdir(parents=True)
@@ -28,12 +28,12 @@ class MVSDropMatrixTest(unittest.TestCase):
             rows = collect_matrix(root, baseline)
             self.assertEqual(rows[0]["delta_psnr"], 1.0)
             self.assertAlmostEqual(rows[0]["delta_lpips"], -0.1)
-            self.assertIn("MVSInit-DG", markdown_table(rows))
+            self.assertIn("Direct MVS + VCD/VCP", markdown_table(rows))
 
     def test_partial_aggregate_is_not_reported_as_full_benchmark(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            result_dir = root / "mvsdrop" / "mipnerf36012"
+            result_dir = root / "mvs" / "mipnerf36012"
             result_dir.mkdir(parents=True)
             result_dir.joinpath("metrics_mean.txt").write_text(
                 "PSNR : 99\nSSIM : 0.99\nLPIPS : 0.01\n", encoding="utf-8"

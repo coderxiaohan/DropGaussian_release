@@ -21,11 +21,7 @@ from arguments import ModelParams
 from utils.camera_utils import cameraList_from_camInfos, camera_to_JSON
 from scene.cameras import PseudoCamera
 from utils.mvs_init import (
-    build_adaptive_mvs_prior,
-    fuse_residual_mvs_point_cloud,
     load_mvs_point_cloud,
-    resolve_mvs_fusion_budget,
-    resolve_mvs_init_point_budget,
     resolve_mvs_init_strategy,
 )
 
@@ -93,7 +89,7 @@ class Scene:
             str(camera.image_name) for camera in scene_info.test_cameras
         ]
 
-        init_mode = getattr(args, "init_mode", "colmap_dense")
+        init_mode = getattr(args, "init_mode", "mvs_anywhere")
         if init_mode not in ("colmap_dense", "mvs_anywhere"):
             raise ValueError("init_mode must be 'colmap_dense' or 'mvs_anywhere'")
         self.initialization_metadata = {
@@ -101,107 +97,31 @@ class Scene:
             "path": str(scene_info.ply_path),
             "base_initialization_sha256": self.base_initialization_sha256,
         }
-        adaptive_prior = None
         if not self.loaded_iter and init_mode == "mvs_anywhere":
-            strategy = getattr(args, "mvs_init_strategy", "auto")
+            strategy = getattr(args, "mvs_init_strategy", "replace")
             resolved_strategy = resolve_mvs_init_strategy(strategy)
             base_point_count = int(scene_info.point_cloud.points.shape[0])
-            try:
-                effective_max_points = resolve_mvs_init_point_budget(
-                    strategy,
-                    resolved_strategy,
-                    args.mvs_init_max_points,
-                )
-                residual_budget = min(
-                    int(args.mvs_init_max_points),
-                    int(args.mvs_init_dense_residual_points),
-                )
-                # The adaptive scorer and sampler must operate on the same
-                # resource-bounded population that can actually be admitted.
-                # Otherwise a larger, randomly thinned candidate cache changes
-                # the spatial distribution even when the final point budget is
-                # unchanged, confounding reliability with reservoir sampling.
-                if resolved_strategy == "adaptive":
-                    effective_max_points = min(
-                        effective_max_points, residual_budget
-                    )
-                mvs_pcd, mvs_path, mvs_metadata = load_mvs_point_cloud(
-                    args.source_path,
-                    n_views=args.n_views,
-                    train_camera_names=[
-                        str(camera.image_name)
-                        for camera in scene_info.train_cameras
-                    ],
-                    explicit_path=args.mvs_init_path,
-                    max_points=effective_max_points,
-                )
-                mvs_metadata["configured_max_points"] = int(
-                    args.mvs_init_max_points
-                )
-                if resolved_strategy == "adaptive":
-                    adaptive_prior = build_adaptive_mvs_prior(
-                        scene_info.point_cloud,
-                        mvs_pcd,
-                        scene_info.train_cameras,
-                        cache_path=mvs_path,
-                        max_residual_points=residual_budget,
-                    )
-                    mvs_metadata.update(adaptive_prior.metadata)
-                    mvs_metadata.update(
-                        {
-                            "base_point_count": base_point_count,
-                            "fused_point_count": (
-                                base_point_count + adaptive_prior.point_count
-                            ),
-                        }
-                    )
-                elif resolved_strategy == "replace":
-                    scene_info = scene_info._replace(
-                        point_cloud=mvs_pcd, ply_path=str(mvs_path)
-                    )
-                    mvs_metadata.update(
-                        {
-                            "fusion_policy": "explicit_replace_ablation",
-                            "base_point_count": base_point_count,
-                            "mvs_point_count": int(mvs_pcd.points.shape[0]),
-                            "fused_point_count": int(mvs_pcd.points.shape[0]),
-                        }
-                    )
-                else:
-                    total_max_points = resolve_mvs_fusion_budget(
-                        strategy,
-                        args.mvs_init_total_max_points,
-                        base_point_count=base_point_count,
-                        dense_base_threshold=args.mvs_init_dense_base_threshold,
-                        dense_residual_points=args.mvs_init_dense_residual_points,
-                    )
-                    fused_pcd, fusion_metadata = fuse_residual_mvs_point_cloud(
-                        scene_info.point_cloud,
-                        mvs_pcd,
-                        total_max_points=total_max_points,
-                    )
-                    scene_info = scene_info._replace(
-                        point_cloud=fused_pcd, ply_path=str(mvs_path)
-                    )
-                    mvs_metadata.update(fusion_metadata)
-            except FileNotFoundError as error:
-                if resolved_strategy != "adaptive":
-                    raise
-                mvs_path = scene_info.ply_path
-                mvs_metadata = {
-                    "path": str(mvs_path),
-                    "fusion_policy": "adaptive_missing_prior_baseline",
-                    "base_point_count": base_point_count,
-                    "mvs_point_count": 0,
-                    "fused_point_count": base_point_count,
-                    "global_reliability": 0.0,
-                    "load_error": str(error),
-                    "camera_provenance_verified": None,
-                }
+            # Direct MVS replacement is shared by every dataset. A missing or
+            # incompatible cache must fail instead of silently running baseline.
+            mvs_pcd, mvs_path, mvs_metadata = load_mvs_point_cloud(
+                args.source_path,
+                n_views=args.n_views,
+                train_camera_names=self.train_camera_names,
+                explicit_path=args.mvs_init_path,
+                max_points=args.mvs_init_max_points,
+            )
+            scene_info = scene_info._replace(
+                point_cloud=mvs_pcd, ply_path=str(mvs_path)
+            )
             mvs_metadata.update(
                 {
                     "requested_strategy": strategy,
                     "resolved_strategy": resolved_strategy,
+                    "fusion_policy": "direct_mvs_replace",
+                    "configured_max_points": int(args.mvs_init_max_points),
+                    "base_point_count": base_point_count,
+                    "mvs_point_count": int(mvs_pcd.points.shape[0]),
+                    "fused_point_count": int(mvs_pcd.points.shape[0]),
                 }
             )
             self.initialization_metadata = {
@@ -215,13 +135,6 @@ class Scene:
             if init_mode == "mvs_anywhere" or getattr(args, "rand_pcd", False):
                 input_points = np.asarray(scene_info.point_cloud.points)
                 input_colors = np.asarray(scene_info.point_cloud.colors)
-                if adaptive_prior is not None and adaptive_prior.point_count:
-                    input_points = np.concatenate(
-                        (input_points, adaptive_prior.point_cloud.points), axis=0
-                    )
-                    input_colors = np.concatenate(
-                        (input_colors, adaptive_prior.point_cloud.colors), axis=0
-                    )
                 storePly(
                     input_path,
                     input_points,
@@ -263,7 +176,6 @@ class Scene:
             self.gaussians.create_from_pcd(
                 scene_info.point_cloud,
                 self.cameras_extent,
-                adaptive_prior=adaptive_prior,
             )
 
     def save(self, iteration):

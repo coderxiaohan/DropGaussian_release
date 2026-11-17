@@ -74,7 +74,7 @@ for scene in "${scenes[@]}"; do
         --seed "$seed" \
         --port "$port" \
         "$@" \
-        --init_mode colmap_dense \
+        --init_mode colmap_dense --density_control none \
         2>&1 | tee "$run_dir/train.log"
 
     echo "Rendering Blender/$scene..."
@@ -85,6 +85,6 @@ for scene in "${scenes[@]}"; do
         --skip_train 2>&1 | tee "$run_dir/render_${iterations}.log"
 done
 
-"$python_bin" "$repo_root/scripts/summarize_mvsdrop_setting.py" \
+"$python_bin" "$repo_root/scripts/all/summarize_mvsdrop_setting.py" \
     --experiment-root "$output_root" \
     --iteration "$iterations"

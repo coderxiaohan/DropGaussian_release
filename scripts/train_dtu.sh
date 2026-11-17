@@ -96,7 +96,7 @@ for requested_scene in "${scenes[@]}"; do
         --seed "$seed" \
         --port "$port" \
         "$@" \
-        --init_mode colmap_dense \
+        --init_mode colmap_dense --density_control none \
         2>&1 | tee "$run_dir/train.log"
 
     echo "Rendering DTU/$scene..."
@@ -108,7 +108,7 @@ for requested_scene in "${scenes[@]}"; do
 
     echo "Evaluating DTU/$scene with IDR foreground masks..."
     CUDA_VISIBLE_DEVICES="$gpu_id" "$python_bin" \
-        "$repo_root/scripts/evaluate_dtu.py" \
+        "$repo_root/scripts/all/evaluate_dtu.py" \
         --model-path "$run_dir" \
         --mask-root "$mask_root" \
         --scene "$scene" \
@@ -116,6 +116,6 @@ for requested_scene in "${scenes[@]}"; do
         2>&1 | tee "$run_dir/evaluate_${iterations}.log"
 done
 
-"$python_bin" "$repo_root/scripts/summarize_mvsdrop_setting.py" \
+"$python_bin" "$repo_root/scripts/all/summarize_mvsdrop_setting.py" \
     --experiment-root "$output_root" \
     --iteration "$iterations"

@@ -28,20 +28,21 @@ class DatasetTrainingScriptsTest(unittest.TestCase):
             with self.subTest(path=path.name):
                 self.assertIn("--init_mode colmap_dense", source)
                 self.assertNotIn("--init_mode mvs_anywhere", source)
+                self.assertIn("--density_control none", source)
 
-    def test_mvsinit_scripts_force_scene_adaptive_initializer(self):
+    def test_mvsinit_scripts_force_direct_initializer(self):
         for dataset in DATASETS:
             path = SCRIPT_ROOT / f"train_mvsinit_{dataset}.sh"
             source = path.read_text(encoding="utf-8")
             with self.subTest(path=path.name):
-                self.assertIn("MODE=mvsdrop", source)
+                self.assertIn("MODE=mvs", source)
                 self.assertIn(f"DATASET={dataset}", source)
                 self.assertIn("train_mvsdrop_benchmark.sh", source)
                 self.assertIn("--init_mode mvs_anywhere", source)
-                self.assertIn("--mvs_init_strategy auto", source)
+                self.assertIn("--mvs_init_strategy replace", source)
 
     def test_paired_blender_runner_regenerates_the_same_in_memory_cloud(self):
-        runner = (SCRIPT_ROOT / "train_mvsdrop_benchmark.sh").read_text(
+        runner = (SCRIPT_ROOT / "all/train_mvsdrop_benchmark.sh").read_text(
             encoding="utf-8"
         )
         reader = (REPO_ROOT / "scene/dataset_readers.py").read_text(
