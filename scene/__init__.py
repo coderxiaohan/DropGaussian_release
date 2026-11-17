@@ -93,7 +93,14 @@ class Scene:
         if init_mode not in ("colmap_dense", "mvs_anywhere"):
             raise ValueError("init_mode must be 'colmap_dense' or 'mvs_anywhere'")
         correction = getattr(args, "mvs_geometry_correction", "none")
+        surface_init = getattr(args, "mvs_surface_init", "none")
         if not self.loaded_iter:
+            if surface_init not in ("none", "oas"):
+                raise ValueError("mvs_surface_init must be none or oas")
+            if surface_init != "none" and init_mode != "mvs_anywhere":
+                raise ValueError("MVS surface initialization requires init_mode=mvs_anywhere")
+            if surface_init != "none" and correction != "none":
+                raise ValueError("surface initialization must be tested without TPS/geometry correction")
             if correction not in ("none", "similarity", "tps", "tps_consistent", "tps_local"):
                 raise ValueError("mvs_geometry_correction must be none, similarity, tps, tps_consistent, or tps_local")
             if correction != "none" and init_mode != "mvs_anywhere":
@@ -225,6 +232,20 @@ class Scene:
                 scene_info.point_cloud,
                 self.cameras_extent,
             )
+            if surface_init != "none":
+                from utils.mvs_surface_init import initialize_surface_covariance
+                # Run once, before training_setup creates the optimizer. Keep
+                # the original Gaussian initializer and all training code intact.
+                surface_metadata, surface_arrays = initialize_surface_covariance(
+                    self.gaussians, scene_info.point_cloud.points,
+                    neighbors=getattr(args, "mvs_surface_neighbors", 32),
+                )
+                self.initialization_metadata["surface_initialization"] = surface_metadata
+                np.savez_compressed(os.path.join(self.model_path, "surface_initialization.npz"),
+                                    **surface_arrays)
+                with open(os.path.join(self.model_path, "surface_initialization.json"), "w") as stream:
+                    json.dump(surface_metadata, stream, indent=2, sort_keys=True)
+                print("MVS surface initialization: OAS-regularized local covariance; XYZ/RGB unchanged")
 
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))

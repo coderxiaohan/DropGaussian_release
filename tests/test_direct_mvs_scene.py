@@ -233,6 +233,43 @@ class DirectMVSSceneTest(unittest.TestCase):
             self.assertEqual(correction.call_args.kwargs["mode"], mode)
             self.assertEqual(correction.call_args.kwargs["local_neighbors"], 32)
 
+    def test_surface_initializer_runs_after_plain_initializer_and_records_artifacts(self):
+        self.args.mvs_surface_init = "oas"
+        self.args.mvs_surface_neighbors = 32
+        metadata = {"method": "test_oas", "point_count": 7}
+        arrays = {"scale_factors": np.ones((7, 3))}
+        def initialize(model, points, *, neighbors):
+            self.gaussians.create_from_pcd.assert_called_once_with(self.mvs, 2.0)
+            self.assertIs(model, self.gaussians)
+            self.assertIs(points, self.mvs.points)
+            self.assertEqual(neighbors, 32)
+            return metadata, arrays
+        with mock.patch("utils.mvs_surface_init.initialize_surface_covariance", side_effect=initialize):
+            scene = self.make_scene()
+        self.assertEqual(scene.initialization_metadata["surface_initialization"], metadata)
+        self.assertEqual(scene.initialization_metadata["selected_sha256"], "mvs-digest")
+        self.assertEqual(json.loads((self.output / "surface_initialization.json").read_text()), metadata)
+        with np.load(self.output / "surface_initialization.npz", allow_pickle=False) as values:
+            np.testing.assert_array_equal(values["scale_factors"], arrays["scale_factors"])
+
+    def test_surface_modes_reject_invalid_or_mixed_experiments_before_cache(self):
+        for surface, init_mode, geometry in (("bad", "mvs_anywhere", "none"),
+                                             ("oas", "colmap_dense", "none"),
+                                             ("oas", "mvs_anywhere", "tps")):
+            self.args.mvs_surface_init = surface
+            self.args.init_mode = init_mode
+            self.args.mvs_geometry_correction = geometry
+            with self.assertRaises(ValueError):
+                self.make_scene()
+        self.load_mvs.assert_not_called()
+
+    def test_render_saved_ply_skips_surface_initializer(self):
+        self.args.mvs_surface_init = "oas"
+        with mock.patch("utils.mvs_surface_init.initialize_surface_covariance") as initialize:
+            self.make_scene(load_iteration=1000)
+        initialize.assert_not_called()
+        self.load_mvs.assert_not_called()
+
     def test_correction_requires_verified_mvs_cache(self):
         self.args.mvs_geometry_correction = "similarity"
         self.load_mvs.return_value[2]["camera_provenance_verified"] = False
