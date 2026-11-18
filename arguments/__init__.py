@@ -63,6 +63,8 @@ class ModelParams(ParamGroup):
         self.mvs_init_strategy = "replace"
         # Optional baseline-geometry preservation and MVS coverage completion.
         # This changes only the input cloud, not Gaussian attributes/training.
+        # Enabled complement modes retain original random initialization on
+        # Blender; mode=none is the explicit direct-MVS comparison there.
         self.mvs_complement_mode = "none"
         self.mvs_complement_max_points = 100000
         self.mvs_complement_total_points = 0

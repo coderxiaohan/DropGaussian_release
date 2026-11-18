@@ -6,7 +6,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class AdaptiveTrainingPolicyTest(unittest.TestCase):
-    def test_training_has_no_dataset_specific_mvs_policy(self):
+    def test_training_has_no_retired_adaptive_mvs_modules(self):
         training_source = (REPO_ROOT / "train.py").read_text(encoding="utf-8")
         scene_source = (REPO_ROOT / "scene/__init__.py").read_text(
             encoding="utf-8"

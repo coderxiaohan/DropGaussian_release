@@ -45,6 +45,24 @@ class Scene:
                 self.loaded_iter = load_iteration
             print("Loading trained model at iteration {}".format(self.loaded_iter))
 
+        requested_init_mode = getattr(args, "init_mode", "mvs_anywhere")
+        init_mode = requested_init_mode
+        if init_mode not in ("colmap_dense", "mvs_anywhere"):
+            raise ValueError("init_mode must be 'colmap_dense' or 'mvs_anywhere'")
+        complement_mode = getattr(args, "mvs_complement_mode", "none")
+        if not self.loaded_iter:
+            # Reject retired/incompatible configurations even when an input
+            # format has an explicit baseline-initialization exception.
+            for removed_option in ("mvs_geometry_correction", "mvs_surface_init"):
+                if getattr(args, removed_option, "none") != "none":
+                    raise ValueError(f"{removed_option} was removed; use direct MVS or MVS complement initialization")
+            if complement_mode not in ("none", "coverage", "concat", "balanced"):
+                raise ValueError("mvs_complement_mode must be none, coverage, concat, or balanced")
+            if complement_mode != "none" and init_mode != "mvs_anywhere":
+                raise ValueError("MVS complement initialization requires init_mode=mvs_anywhere")
+        random_pcd = bool(getattr(args, "rand_pcd", False))
+        blender_random_override = False
+        is_blender_scene = False
         self.train_cameras = {}
         self.test_cameras = {}
         self.pseudo_cameras = {}
@@ -54,11 +72,25 @@ class Scene:
             scene_info = sceneLoadTypeCallbacks["Replica"](args.source_path, args.images, args.eval, args.n_views, args.rand_pcd)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
+            is_blender_scene = True
+            # Explicit main-method protocol: Blender keeps DropGaussian's
+            # random initializer, not a learned-MVS replacement. Force fresh
+            # in-memory points even if a cached points3d.ply already exists.
+            # mode=none remains the deliberately requested direct-MVS ablation.
+            blender_random_override = (
+                init_mode == "mvs_anywhere"
+                and complement_mode in ("coverage", "concat", "balanced")
+            )
+            if blender_random_override:
+                init_mode = "colmap_dense"
+                random_pcd = True
+                print("Blender complement protocol: original DropGaussian random initialization; "
+                      "MVS loading and complement selection are disabled. Density control is unchanged.")
             scene_info = sceneLoadTypeCallbacks["Blender"](
                 args.source_path,
                 args.white_background,
                 args.eval,
-                args.rand_pcd,
+                random_pcd,
                 args.n_views,
                 getattr(args, "dataset_name", "auto"),
             )
@@ -89,26 +121,39 @@ class Scene:
             str(camera.image_name) for camera in scene_info.test_cameras
         ]
 
-        init_mode = getattr(args, "init_mode", "mvs_anywhere")
-        if init_mode not in ("colmap_dense", "mvs_anywhere"):
-            raise ValueError("init_mode must be 'colmap_dense' or 'mvs_anywhere'")
-        complement_mode = getattr(args, "mvs_complement_mode", "none")
-        if not self.loaded_iter:
-            # Old programmatic configurations must not silently run a different
-            # initializer after the experimental correction modules are removed.
-            for removed_option in ("mvs_geometry_correction", "mvs_surface_init"):
-                if getattr(args, removed_option, "none") != "none":
-                    raise ValueError(f"{removed_option} was removed; use direct MVS or MVS complement initialization")
-            if complement_mode not in ("none", "coverage", "concat", "balanced"):
-                raise ValueError("mvs_complement_mode must be none, coverage, concat, or balanced")
-            if complement_mode != "none":
-                if init_mode != "mvs_anywhere":
-                    raise ValueError("MVS complement initialization requires init_mode=mvs_anywhere")
+        self.effective_rand_pcd = random_pcd
         self.initialization_metadata = {
             "mode": init_mode,
             "path": str(scene_info.ply_path),
             "base_initialization_sha256": self.base_initialization_sha256,
         }
+        if init_mode == "colmap_dense":
+            base_count = int(len(scene_info.point_cloud.points))
+            base_source = getattr(scene_info, "point_cloud_source", "unknown")
+            blender_random = is_blender_scene and base_source == "random"
+            self.initialization_metadata.update({
+                "requested_mode": requested_init_mode,
+                "requested_complement_mode": complement_mode,
+                "effective_complement_mode": "none",
+                "fusion_policy": ("blender_random_dropgaussian" if blender_random
+                                  else "baseline_point_cloud"),
+                "base_point_cloud_source": base_source,
+                "base_point_count": base_count,
+                "selected_base_point_count": base_count,
+                "mvs_point_count": 0,
+                "fused_point_count": base_count,
+                "selected_point_count": base_count,
+                "mvs_cache_used": False,
+                "blender_random_override": blender_random_override,
+            })
+            if blender_random:
+                # The dataset PLY may be stale or nonexistent: the actual
+                # initialization artifact belongs to this run, not that path.
+                self.initialization_metadata.update({
+                    "path": os.path.join(self.model_path, "input.ply"),
+                    "random_cloud_generated_in_memory": random_pcd,
+                })
+                print(f"Blender initialization: {base_count} original random points; 0 MVS points.")
         if not self.loaded_iter and init_mode == "mvs_anywhere":
             strategy = getattr(args, "mvs_init_strategy", "replace")
             resolved_strategy = resolve_mvs_init_strategy(strategy)
@@ -141,8 +186,8 @@ class Scene:
                     # anchor. Use exactly the direct loader/selection at this
                     # budget, rather than re-sampling a larger candidate pool.
                     load_budget = min(complement_budget, total_budget) if total_budget else complement_budget
-            # Direct MVS replacement is shared by every dataset. A missing or
-            # incompatible cache must fail instead of silently running baseline.
+            # Explicit direct-MVS comparisons still include Blender. A missing
+            # or incompatible cache must fail rather than silently falling back.
             mvs_pcd, mvs_path, mvs_metadata = load_mvs_point_cloud(
                 args.source_path,
                 n_views=args.n_views,
@@ -242,7 +287,7 @@ class Scene:
 
         if not self.loaded_iter:
             input_path = os.path.join(self.model_path, "input.ply")
-            if init_mode == "mvs_anywhere" or getattr(args, "rand_pcd", False):
+            if init_mode == "mvs_anywhere" or random_pcd:
                 input_points = np.asarray(scene_info.point_cloud.points)
                 input_colors = np.asarray(scene_info.point_cloud.colors)
                 storePly(

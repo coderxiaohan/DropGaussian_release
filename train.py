@@ -207,12 +207,15 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     except (OSError, subprocess.SubprocessError):
         git_commit = None
         git_dirty = None
+    # Record the initializer actually used, not merely the requested CLI mode.
+    # In particular, the Blender complement protocol uses random base points.
+    effective_init_mode = scene.initialization_metadata["mode"]
     protocol = {
         "dataset_name": str(dataset.dataset_name).lower(),
         "source_path": dataset.source_path,
         "resolution": int(dataset.resolution),
         "white_background": bool(dataset.white_background),
-        "rand_pcd": bool(dataset.rand_pcd),
+        "rand_pcd": scene.effective_rand_pcd,
         "n_views": int(dataset.n_views),
         "iterations": int(opt.iterations),
         "seed": int(seed),
@@ -224,11 +227,12 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         "status": "completed",
         "method": (
             "DirectMVS-DG"
-            if dataset.init_mode == "mvs_anywhere"
+            if effective_init_mode == "mvs_anywhere"
             else "DropGaussian"
         ),
         "metricboost_mode": "dropgaussian",
-        "init_mode": dataset.init_mode,
+        "init_mode": effective_init_mode,
+        "requested_init_mode": dataset.init_mode,
         "initialization_source": scene.initialization_metadata,
         "source_path": dataset.source_path,
         "model_path": dataset.model_path,

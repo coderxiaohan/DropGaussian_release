@@ -50,6 +50,9 @@ DropGaussian dropout, the photometric objective, learning rates, camera splits,
 and the densification event schedule are unchanged.
 
 The main entry points are `scripts/mvs_complement/train_<dataset>.sh`.
+For Blender, the main protocol now retains the original 10,000-point random
+DropGaussian initialization and applies the same EGD/TBP density control, without
+MVS. LLFF, DTU, and Mip-NeRF360 still use geometry-complementary initialization.
 `scripts/mvs_vcd_vcp/` is the direct-MVS comparison, not the main initialization
 method. TPS/TWINGS geometry correction and OAS surface-covariance experiments,
 their CLI options, and their dedicated scripts/tests have been removed.
@@ -69,24 +72,46 @@ baseline geometry and adds MVS candidates supported by at least two training
 views, prioritizing regions not covered by that geometry. Positions and colors
 are not warped; ordinary Gaussian scale, rotation, and opacity initialization
 is retained. Random or unknown-source base clouds are not treated as reliable
-reconstructions: when no reconstructed base exists, initialization falls back
-to direct MVS, **not** to baseline random points. Missing MVS caches remain
-errors, not silent fallbacks.
+reconstructions.
+
+**Blender initialization exception:** for the main complement modes (`coverage`,
+`concat`, or `balanced`), Blender/NeRF-Synthetic input uses the original random
+initializer: 10,000 points in `[-1, 1]^3`, original colors, and ordinary Gaussian
+attributes. Existing `points3d.ply` files are neither used as a reconstruction
+nor overwritten. No MVS point/depth cache is loaded and no MVS points are added.
+DropGaussian training and EGD/TBP are unchanged. This is an explicit experimental
+protocol choice, not a learned reliability gate or a guarantee of baseline PSNR;
+report it in experimental settings rather than claiming MVS is used on all four
+datasets. `Scene` also enforces this behavior for direct `train.py` calls with
+Blender-format input and an enabled complement mode.
+
+The Blender launcher writes new runs to
+`output/mvs_complement/blender_random/blender<N>/` (or below the supplied
+`OUTPUT_ROOT`). MVS complement budgets do not apply to this random initializer.
+Initialization metadata records the actual base/MVS counts and effective mode.
+The saved results under `coverage/keep_base/blender8` and
+`docs/results/2026-11-18/` predate this change and are still direct-MVS runs;
+they must not be relabeled as random-initialization results.
+
+For other input formats without reconstructed base geometry, the existing
+direct-MVS fallback remains unchanged. On paths that actually use MVS, missing
+MVS caches remain errors, not silent fallbacks.
 
 The default `MVS_COMPLEMENT_TOTAL_POINTS=0` keeps every base point and adds up
 to `MVS_COMPLEMENT_MAX_POINTS=100000` MVS points. A positive total budget can
 subsample the base cloud; use equal positive budgets when testing whether gains
 come from selection rather than point count. `concat` and `balanced` remain as
-initialization ablations, and `none` selects the direct-MVS comparison.
+initialization ablations on the real datasets, and `none` explicitly selects the
+direct-MVS comparison on every dataset, including Blender.
 `coverage` and `balanced` require compatible depth caches. Reused baseline
 geometry assets have not been independently audited for training-view-only
 provenance.
 
 ### Comparison initialization: direct MVS
 
-For a fresh MVS run, `Scene` loads the cached MVS point cloud and **replaces**
-the original initialization point cloud. All datasets, including Blender, use
-the same policy. The Gaussian initializer uses the ordinary nearest-neighbor
+For an explicit direct-MVS run (`--mvs_complement_mode none`), `Scene` loads the
+cached MVS point cloud and **replaces** the original initialization point cloud.
+All datasets, including Blender, use the same comparison policy. The Gaussian initializer uses the ordinary nearest-neighbor
 isotropic scales, identity rotations, and uniform opacity 0.1. There is no
 reliability weighting or automatic fallback to the baseline.
 
@@ -157,10 +182,11 @@ N_VIEWS=8 GPU_ID=3 bash scripts/mvs_complement/train_blender.sh
 ```
 
 Each command runs all configured scenes once, then renders and summarizes;
-DTU uses foreground-mask evaluation. Outputs default to
-`output/mvs_complement/coverage/keep_base/<dataset><views>/<scene>/`.
-Changing the complement mode or total budget changes the intermediate output
-directories. Existing nonempty main-method settings are rejected; use a fresh
+DTU uses foreground-mask evaluation. Real-dataset outputs default to
+`output/mvs_complement/coverage/keep_base/<dataset><views>/<scene>/`;
+Blender main-method outputs use `output/mvs_complement/blender_random/blender8/<scene>/`.
+For MVS runs, changing the complement mode or total budget changes the
+intermediate output directories. Existing nonempty main-method settings are rejected; use a fresh
 `OUTPUT_ROOT` for another experiment. To run the direct-MVS comparison, use the
 corresponding `scripts/mvs_vcd_vcp/` command instead.
 
@@ -173,8 +199,9 @@ corresponding `scripts/mvs_vcd_vcp/` command instead.
 
 `N_VIEWS`, `GPU_ID`, `SCENES`, `DATA_ROOT`, `RESOLUTION`, `ITERATIONS`,
 `PYTHON_BIN`, `OUTPUT_ROOT`, `DTU_MASK_ROOT`, `MVS_INIT_PATH`, and
-`MVS_INIT_MAX_POINTS` remain available. Every requested view count requires
-its corresponding MVS cache. The direct-MVS launchers force the replacement
+`MVS_INIT_MAX_POINTS` remain available. On MVS paths, every requested view count
+requires its corresponding MVS cache; the main Blender random path does not.
+The direct-MVS launchers force the replacement
 policy even if inherited variables or extra CLI flags select another initializer.
 
 Preview all nine settings (91 scene-setting runs, one method):
@@ -192,6 +219,44 @@ Do not share one dataset-specific `DATA_ROOT`, `SCENES`, or `MVS_INIT_PATH`
 across a mixed-dataset batch.
 
 ### Module ablations and evaluation
+
+Keep `scripts/mvs_complement/` as the complete-method entry point. The dedicated
+[`scripts/ablation/`](scripts/ablation/README.md) launchers fix module choices and
+separate results; they do not modify the training algorithms:
+
+| Directory under `scripts/ablation/` | Complementary MVS initialization | EGD | TBP |
+| --- | --- | --- | --- |
+| `baseline/` | No | No | No |
+| `complement_only/` | Yes | No | No |
+| `egd_only/` | No | Yes | No |
+| `tbp_only/` | No | No | Yes |
+| `complement_egd/` | Yes | Yes | No |
+| `complement_tbp/` | Yes | No | Yes |
+| `egd_tbp/` | No | Yes | Yes |
+
+Each directory contains `train_llff.sh`, `train_dtu.sh`, `train_mipnerf360.sh`,
+`train_blender.sh`, and `train_all_views.sh`. Results default to
+`output/ablation/<variant>/<dataset><views>/<scene>/`. An explicit `OUTPUT_ROOT`
+is a common parent and still receives the variant and setting suffixes. Existing
+nonempty settings are rejected. Both single-setting and matrix launchers support
+`--dry-run`; matrix launchers also accept `MATRIX` and per-setting GPU mappings.
+
+```bash
+# All LLFF scenes at three views; EGD and TBP are both disabled.
+GPU_ID=0 N_VIEWS=3 bash scripts/ablation/complement_only/train_llff.sh
+# Preview every setting for the EGD-only ablation, without training.
+bash scripts/ablation/egd_only/train_all_views.sh --dry-run
+```
+
+These are fixed experiments: leave `MODE`, `DENSITY_CONTROL`, and
+`MVS_COMPLEMENT_MODE` unset (conflicting values are rejected), and use the
+appropriate directory instead. The original DropGaussian regularization and
+native density operations are retained. Complementary initialization is not
+direct MVS replacement. On Blender every ablation preserves the complete
+method's original random initialization: `complement_only` equals `baseline`,
+`complement_egd` equals `egd_only`, `complement_tbp` equals `tbp_only`, and
+`egd_tbp` equals the complete-method configuration. Do not treat these as
+distinct MVS initialization experiments on Blender.
 
 Baseline and module-disable switches remain only as experimental controls;
 there is no adaptive MVS implementation to enable.
@@ -213,6 +278,10 @@ DENSITY_CONTROL=vcp bash scripts/mvs_vcd_vcp/train_llff.sh
 bash scripts/dropgaussian_vcd_vcp/train_llff.sh
 # Original DropGaussian initialization and density control
 bash scripts/train_llff.sh
+# Main Blender protocol: random initialization + EGD/TBP (no MVS cache required)
+GPU_ID=0 N_VIEWS=8 bash scripts/mvs_complement/train_blender.sh
+# Historical direct-MVS Blender comparison remains available explicitly
+bash scripts/mvs_vcd_vcp/train_blender.sh
 ```
 
 Density variants use separate `output/mvs_<mode>/` or

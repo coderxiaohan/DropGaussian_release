@@ -15,9 +15,12 @@ import unittest
 from unittest import mock
 
 import numpy as np
+from plyfile import PlyData, PlyElement
 
 from arguments import ModelParams, OptimizationParams
+from utils.dataset_splits import nerf_synthetic_split, nerf_synthetic_test_split
 from utils.mvs_init import resolve_mvs_init_strategy
+from utils.sh_utils import SH2RGB
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -351,6 +354,213 @@ class DirectMVSSceneTest(unittest.TestCase):
             self.make_scene(load_iteration=10000)
         build.assert_not_called()
         self.load_mvs.assert_not_called()
+
+    def synthetic_reader_with_real_random_cloud(self):
+        # Execute the production reader and PLY conversion without importing
+        # GaussianModel's CUDA extensions. Only camera/image IO is substituted.
+        reader_path = REPO_ROOT / "scene" / "dataset_readers.py"
+        module = ast.parse(reader_path.read_text())
+        names = {"readNerfSyntheticInfo", "pointCloudFromPlyValues", "storePly", "fetchPly"}
+        functions = [node for node in module.body
+                     if isinstance(node, ast.FunctionDef) and node.name in names]
+        cameras = [SimpleNamespace(image_name=f"train_{index:03d}") for index in range(100)]
+        held_out = [SimpleNamespace(image_name=f"test_{index:03d}") for index in range(16)]
+        namespace = {
+            "os": os, "np": np, "SceneInfo": SceneInfo,
+            "BasicPointCloud": SimpleNamespace, "SH2RGB": SH2RGB,
+            "PlyData": PlyData, "PlyElement": PlyElement,
+            "nerf_synthetic_split": nerf_synthetic_split,
+            "nerf_synthetic_test_split": nerf_synthetic_test_split,
+            "getNerfppNorm": mock.Mock(return_value={"radius": 2.0}),
+            "readCamerasFromTransforms": mock.Mock(side_effect=(
+                lambda path, name, white, extension:
+                list(cameras if name == "transforms_train.json" else held_out)
+            )),
+        }
+        exec(compile(ast.Module(body=functions, type_ignores=[]), str(reader_path), "exec"),
+             namespace)
+        return namespace
+
+    def test_blender_complement_matches_original_random_baseline_and_preserves_cache(self):
+        (self.source / "transforms_train.json").write_text("{}")
+        rng_state = np.random.get_state()
+        self.addCleanup(np.random.set_state, rng_state)
+        reader = self.synthetic_reader_with_real_random_cloud()
+        write_ply, read_ply = reader["storePly"], reader["fetchPly"]
+        cached_path = self.source / "points3d.ply"
+        write_ply(cached_path, self.base.points, self.base.colors * 255.0)
+        cached_bytes = cached_path.read_bytes()
+        reader["storePly"] = mock.Mock(side_effect=AssertionError("shared PLY must not be written"))
+        reader["fetchPly"] = mock.Mock(side_effect=AssertionError("shared PLY must not be read"))
+        self.blender_reader.side_effect = reader["readNerfSyntheticInfo"]
+        self.store_ply.side_effect = write_ply
+        self.load_mvs.side_effect = AssertionError("Blender main method must not access MVS cache")
+        self.args.white_background = True
+
+        for dataset_name in ("auto", "blender"):
+            for seed in (0, 17):
+                with self.subTest(dataset_name=dataset_name, seed=seed):
+                    self.args.dataset_name = dataset_name
+                    self.args.init_mode = "colmap_dense"
+                    self.args.rand_pcd = True
+                    self.args.mvs_complement_mode = "none"
+                    self.gaussians.reset_mock()
+                    np.random.seed(seed)
+                    baseline = self.make_scene()
+                    baseline_cloud = self.gaussians.create_from_pcd.call_args.args[0]
+                    self.assertEqual(len(baseline_cloud.points), 10000)
+                    np.testing.assert_array_equal(baseline_cloud.normals, 0)
+                    self.assertTrue(np.all(np.abs(baseline_cloud.points) <= 1.0))
+
+                    for mode in ("coverage", "concat", "balanced"):
+                        with self.subTest(mode=mode):
+                            self.args.init_mode = "mvs_anywhere"
+                            self.args.rand_pcd = False
+                            self.args.mvs_complement_mode = mode
+                            self.blender_reader.reset_mock()
+                            self.gaussians.reset_mock()
+                            self.store_ply.reset_mock()
+                            np.random.seed(seed)
+                            with mock.patch("utils.mvs_complement.build_complement_cloud",
+                                            side_effect=AssertionError("Blender must skip complement")) as build:
+                                scene = self.make_scene()
+                            cloud = self.gaussians.create_from_pcd.call_args.args[0]
+                            self.gaussians.create_from_pcd.assert_called_once_with(cloud, 2.0)
+                            self.blender_reader.assert_called_once_with(
+                                self.args.source_path, True, True, True, 3, dataset_name,
+                            )
+                            self.colmap_reader.assert_not_called()
+                            self.load_mvs.assert_not_called()
+                            build.assert_not_called()
+                            self.assertFalse(self.args.rand_pcd)
+                            self.assertTrue(scene.effective_rand_pcd)
+                            self.assertEqual(scene.base_initialization_sha256,
+                                             baseline.base_initialization_sha256)
+                            self.assertEqual(scene.train_camera_names, baseline.train_camera_names)
+                            self.assertEqual(scene.test_camera_names, baseline.test_camera_names)
+                            np.testing.assert_array_equal(cloud.points, baseline_cloud.points)
+                            np.testing.assert_array_equal(cloud.colors, baseline_cloud.colors)
+                            np.testing.assert_array_equal(cloud.normals, baseline_cloud.normals)
+                            self.store_ply.assert_called_once()
+                            self.assertEqual(self.store_ply.call_args.args[0],
+                                             str(self.output / "input.ply"))
+                            artifact_cloud = read_ply(self.output / "input.ply")
+                            np.testing.assert_array_equal(artifact_cloud.points, baseline_cloud.points)
+                            np.testing.assert_array_equal(artifact_cloud.colors, baseline_cloud.colors)
+                            self.assertEqual(cached_path.read_bytes(), cached_bytes)
+                            for artifact in ("complement_initialization.json",
+                                             "complement_initialization.npz"):
+                                self.assertFalse((self.output / artifact).exists())
+                            metadata = scene.initialization_metadata
+                            self.assertEqual(metadata["mode"], "colmap_dense")
+                            self.assertEqual(metadata["requested_mode"], "mvs_anywhere")
+                            self.assertEqual(metadata["requested_complement_mode"], mode)
+                            self.assertEqual(metadata["effective_complement_mode"], "none")
+                            self.assertEqual(metadata["fusion_policy"], "blender_random_dropgaussian")
+                            self.assertEqual(metadata["base_point_cloud_source"], "random")
+                            self.assertEqual(metadata["path"], str(self.output / "input.ply"))
+                            self.assertTrue(metadata["random_cloud_generated_in_memory"])
+                            self.assertTrue(metadata["blender_random_override"])
+                            self.assertFalse(metadata["mvs_cache_used"])
+                            self.assertEqual(metadata["mvs_point_count"], 0)
+                            for field in ("base_point_count", "selected_base_point_count",
+                                          "fused_point_count", "selected_point_count"):
+                                self.assertEqual(metadata[field], 10000)
+        reader["storePly"].assert_not_called()
+        reader["fetchPly"].assert_not_called()
+
+    def test_blender_explicit_direct_mvs_does_not_force_random_reader(self):
+        (self.source / "transforms_train.json").write_text("{}")
+        self.args.dataset_name = "auto"
+        self.args.mvs_complement_mode = "none"
+        self.args.rand_pcd = False
+        with mock.patch("utils.mvs_complement.build_complement_cloud") as build:
+            scene = self.make_scene()
+        self.blender_reader.assert_called_once_with(
+            self.args.source_path, False, True, False, 3, "auto",
+        )
+        self.load_mvs.assert_called_once()
+        build.assert_not_called()
+        self.gaussians.create_from_pcd.assert_called_once_with(self.mvs, 2.0)
+        self.assertFalse(scene.effective_rand_pcd)
+        self.assertEqual(scene.initialization_metadata["mode"], "mvs_anywhere")
+        self.assertEqual(scene.initialization_metadata["fusion_policy"], "direct_mvs_replace")
+
+    def test_blender_dataset_label_without_transforms_does_not_trigger_random_override(self):
+        self.args.dataset_name = "blender"
+        self.enable_complement(source="random")
+        with mock.patch("utils.mvs_complement.build_complement_cloud", return_value=(
+                self.mvs, {"selected_base_count": 0, "selected_mvs_count": 7,
+                           "fallback": "no_reconstruction_geometry_direct_mvs_unchanged"}, {})) as build:
+            scene = self.make_scene()
+        self.colmap_reader.assert_called_once()
+        self.blender_reader.assert_not_called()
+        self.load_mvs.assert_called_once()
+        build.assert_called_once()
+        self.gaussians.create_from_pcd.assert_called_once_with(self.mvs, 2.0)
+        self.assertFalse(scene.effective_rand_pcd)
+        self.assertEqual(scene.initialization_metadata["mode"], "mvs_anywhere")
+        self.assertEqual(scene.initialization_metadata["fusion_policy"],
+                         "direct_mvs_no_reconstructed_base")
+
+    def test_blender_saved_model_skips_random_gaussian_initialization_and_mvs(self):
+        (self.source / "transforms_train.json").write_text("{}")
+        self.args.dataset_name = "blender"
+        self.enable_complement(source="random")
+        self.load_mvs.side_effect = AssertionError("rendering must not access MVS cache")
+        with mock.patch("utils.mvs_complement.build_complement_cloud") as build:
+            scene = self.make_scene(load_iteration=10000)
+        self.gaussians.load_ply.assert_called_once_with(str(
+            self.output / "point_cloud" / "iteration_10000" / "point_cloud.ply"
+        ))
+        self.gaussians.create_from_pcd.assert_not_called()
+        self.store_ply.assert_not_called()
+        self.load_mvs.assert_not_called()
+        build.assert_not_called()
+        self.assertEqual(scene.loaded_iter, 10000)
+        self.assertFalse((self.output / "input.ply").exists())
+
+    def test_training_manifest_reports_effective_blender_initializer_and_density_mode(self):
+        (self.source / "transforms_train.json").write_text("{}")
+        self.args.dataset_name = "blender"
+        self.args.resolution = 1
+        self.enable_complement(source="random")
+        scene = self.make_scene()
+        train_path = REPO_ROOT / "train.py"
+        module = ast.parse(train_path.read_text())
+        training = next(node for node in module.body
+                        if isinstance(node, ast.FunctionDef) and node.name == "training")
+        # Run the real manifest-writing statements after training, substituting
+        # the timer/GPU counters so the test never starts optimization or CUDA.
+        start = next(index for index, node in enumerate(training.body)
+                     if isinstance(node, ast.Assign)
+                     and any(isinstance(target, ast.Name) and target.id == "effective_init_mode"
+                             for target in node.targets))
+        namespace = {
+            "scene": scene, "dataset": self.args, "opt": SimpleNamespace(iterations=10000),
+            "seed": 17, "initial_point_count": 4,
+            "gaussians": SimpleNamespace(get_xyz=np.zeros((5, 3))),
+            "convergence_curve": [], "training_start": 0.0,
+            "time": SimpleNamespace(perf_counter=lambda: 1.0),
+            "torch": SimpleNamespace(cuda=SimpleNamespace(max_memory_allocated=lambda: 0)),
+            "git_commit": "fixture", "git_dirty": True,
+            "density_config": SimpleNamespace(mode="vcd_vcp", as_dict=lambda: {"mode": "vcd_vcp"}),
+            "density_events": [], "first_iter": 0, "checkpoint": None,
+            "density_log_path": str(self.output / "density.jsonl"),
+            "os": os, "sys": sys, "json": json,
+        }
+        exec(compile(ast.Module(body=training.body[start:], type_ignores=[]),
+                     str(train_path), "exec"), namespace)
+        manifest = json.loads((self.output / "manifest.json").read_text())
+        self.assertEqual(manifest["method"], "DropGaussian+VCD_VCP")
+        self.assertEqual(manifest["init_mode"], "colmap_dense")
+        self.assertEqual(manifest["requested_init_mode"], "mvs_anywhere")
+        self.assertTrue(manifest["protocol"]["rand_pcd"])
+        self.assertFalse(self.args.rand_pcd)
+        self.assertEqual(manifest["initialization_source"]["mvs_point_count"], 0)
+        self.assertEqual(manifest["initialization_source"]["fusion_policy"],
+                         "blender_random_dropgaussian")
+        self.assertEqual(manifest["density_control"]["config"]["mode"], "vcd_vcp")
 
 
 class DirectMVSBranchDefaultsTest(unittest.TestCase):

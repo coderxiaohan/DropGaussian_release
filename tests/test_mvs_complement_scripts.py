@@ -20,7 +20,8 @@ DATASETS = {
 ENV_KEYS = {
     "MODE", "DENSITY_CONTROL", "DATASET", "DATA_ROOT", "SCENES", "N_VIEWS",
     "ITERATIONS", "RESOLUTION", "OUTPUT_ROOT", "PYTHON_BIN", "SEED", "PORT",
-    "DTU_MASK_ROOT", "CALL_LOG", "FAKE_FAIL_TRAIN", "DRY_RUN", "MATRIX", "MODES",
+    "DTU_MASK_ROOT", "CALL_LOG", "FAKE_FAIL_TRAIN", "FAKE_REQUIRE_BLENDER_RANDOM",
+    "DRY_RUN", "MATRIX", "MODES",
 }
 
 
@@ -51,6 +52,11 @@ def value(flag):
     return args[max(i for i, arg in enumerate(args) if arg == flag) + 1]
 
 if kind == "train.py":
+    if os.environ.get("FAKE_REQUIRE_BLENDER_RANDOM"):
+        assert value("--init_mode") == "colmap_dense", args
+        assert "--rand_pcd" in args, args
+        assert value("--density_control") == "vcd_vcp", args
+        assert not any(arg.startswith("--mvs") for arg in args), args
     if os.environ.get("FAKE_FAIL_TRAIN"):
         sys.exit(23)
     root = Path(value("-m"))
@@ -76,7 +82,8 @@ class MvsComplementLauncherTest(unittest.TestCase):
     def fixture(self, directory, dataset):
         root = Path(directory)
         repo = root / "repo with spaces"
-        for relative in (SCRIPTS, Path("scripts/mvs_vcd_vcp"), Path("scripts/vcd_vcp")):
+        for relative in (SCRIPTS, Path("scripts/mvs_vcd_vcp"),
+                         Path("scripts/dropgaussian_vcd_vcp"), Path("scripts/vcd_vcp")):
             shutil.copytree(ROOT / relative, repo / relative)
         common = repo / "scripts/all"
         common.mkdir()
@@ -111,16 +118,21 @@ class MvsComplementLauncherTest(unittest.TestCase):
                         f"all configured {dataset} scenes, {views} training views",
                         "10000 iterations, GPU 0", "All scenes does not mean all input views",
                         "training-view depth caches", "does not preserve every original point",
-                        "Random clouds", "records the fallback", "100000",
+                        "Random clouds", "record the fallback", "100000",
                         "same source quotas", "depth-supported, positive-novelty candidate pool",
                         "samples that pool uniformly", "depth-cache pixels",
                         "training-view-only provenance is not independently verified",
                         "none with TOTAL_POINTS=0 uses MVS_INIT_MAX_POINTS (default: 100000)",
+                        "Blender main method: original DropGaussian random initialization (10000 points)",
+                        "no MVS cache or depth preflight", "EGD/TBP",
+                        "explicit direct-MVS ablation on every dataset, including Blender",
+                        "ignores all MVS_COMPLEMENT_* budgets/selection settings and MVS_INIT_* settings",
+                        "<root>/blender_random/blender<views>",
                     ):
                         self.assertIn(expected, result.stdout)
             self.assertFalse(output.exists())
 
-    def test_four_dataset_dry_runs_default_to_coverage_without_writes(self):
+    def test_defaults_are_real_dataset_coverage_and_blender_random_without_writes(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory) / "not created"
             for dataset, (views, _, _) in DATASETS.items():
@@ -130,6 +142,17 @@ class MvsComplementLauncherTest(unittest.TestCase):
                         DATA_ROOT="/missing-data", PYTHON_BIN="/missing-python"))
                     self.assertEqual(result.returncode, 0, result.stderr)
                     cmd = shlex.split(result.stdout)
+                    if dataset == "blender":
+                        self.assertIn(f"OUTPUT_ROOT={output}/blender_random/blender{views}", cmd)
+                        self.assertIn("MODE=dropgaussian", cmd)
+                        self.assertIn("DENSITY_CONTROL=vcd_vcp", cmd)
+                        self.assertTrue(any(token.endswith("/dropgaussian_vcd_vcp/train_blender.sh")
+                                            for token in cmd))
+                        self.assertFalse(any(token.startswith(("--mvs", "MVS_")) for token in cmd))
+                        self.assertIn("random initialization (10000 points)", result.stderr)
+                        self.assertIn("no MVS/cache requirement", result.stderr)
+                        self.assertIn("EGD/TBP", result.stderr)
+                        continue
                     self.assertIn(f"OUTPUT_ROOT={output}/coverage/keep_base/{dataset}{views}", cmd)
                     for token in ("DENSITY_CONTROL=vcd_vcp", "MODE=mvs", "MVS_INIT_STRATEGY=replace"):
                         self.assertIn(token, cmd)
@@ -190,7 +213,11 @@ class MvsComplementLauncherTest(unittest.TestCase):
             self.assertEqual(len(commands), 9)
             paths = {next(token for token in cmd if token.startswith("OUTPUT_ROOT=")) for cmd in commands}
             self.assertEqual(len(paths), 9)
-            self.assertTrue(all(last_value(cmd, "--mvs_complement_mode") == "coverage" for cmd in commands))
+            self.assertTrue(all(last_value(cmd, "--mvs_complement_mode") == "coverage"
+                                for cmd in commands[:-1]))
+            self.assertIn("MODE=dropgaussian", commands[-1])
+            self.assertIn(f"OUTPUT_ROOT={output}/blender_random/blender8", commands[-1])
+            self.assertFalse(any(token.startswith("--mvs") for token in commands[-1]))
             self.assertTrue(all("N_VIEWS=999" not in cmd for cmd in commands))
             self.assertFalse(output.exists())
 
@@ -242,12 +269,14 @@ class MvsComplementLauncherTest(unittest.TestCase):
             "--test_iterations", "--save_iterations", "--start_checkpoint", "--position_lr_init",
             "--densify_until_iter", "--opacity_reset_interval", "--sh_degree", "--random_background",
         )
-        for option in options:
-            for args in ((option, "invalid"), (option + "=invalid",)):
-                with self.subTest(args=args):
-                    result = self.run_script("train_llff.sh", env=dict(clean_environment(), DRY_RUN="1"), args=args)
-                    self.assertEqual(result.returncode, 2)
-                    self.assertEqual(result.stdout, "")
+        for dataset in ("llff", "blender"):
+            for option in options:
+                for args in ((option, "invalid"), (option + "=invalid",)):
+                    with self.subTest(dataset=dataset, args=args):
+                        result = self.run_script(f"train_{dataset}.sh", env=dict(
+                            clean_environment(), DRY_RUN="1"), args=args)
+                        self.assertEqual(result.returncode, 2)
+                        self.assertEqual(result.stdout, "")
         result = self.run_script("train_all_views.sh", args=("--dry-run", "--n_v", "6"))
         self.assertEqual(result.returncode, 2)
         self.assertEqual(result.stdout, "")
@@ -269,19 +298,98 @@ class MvsComplementLauncherTest(unittest.TestCase):
                 self.assertEqual([call["kind"] for call in calls], expected)
                 args = calls[0]["args"]
                 for flag, value in {
-                    "--init_mode": "mvs_anywhere", "--mvs_init_strategy": "replace",
-                    "--density_control": "vcd_vcp", "--mvs_complement_mode": "coverage",
-                    "--mvs_complement_total_points": "0", "--mvs_complement_max_points": "100000",
+                    "--density_control": "vcd_vcp",
                     "--n_views": str(views), "-r": str(resolution), "--iterations": "10000",
                 }.items():
                     self.assertEqual(last_value(args, flag), value)
+                if dataset == "blender":
+                    self.assertEqual(last_value(args, "--init_mode"), "colmap_dense")
+                    self.assertIn("--rand_pcd", args)
+                    self.assertIn("--white_background", args)
+                    self.assertFalse(any(arg.startswith("--mvs") for arg in args))
+                    setting = "blender_random"
+                else:
+                    for flag, value in {
+                        "--init_mode": "mvs_anywhere", "--mvs_init_strategy": "replace",
+                        "--mvs_complement_mode": "coverage", "--mvs_complement_total_points": "0",
+                        "--mvs_complement_max_points": "100000",
+                    }.items():
+                        self.assertEqual(last_value(args, flag), value)
+                    setting = "coverage/keep_base"
                 self.assertFalse(any(arg.startswith(("--mvs_geometry", "--mvs_surface"))
                                      for arg in args))
                 self.assertEqual(calls[0]["gpu"], "4")
-                output = repo / "output/mvs_complement/coverage/keep_base" / f"{dataset}{views}" / scene
+                output = repo / "output/mvs_complement" / setting / f"{dataset}{views}" / scene
                 self.assertEqual(Path(last_value(args, "-m")), output)
                 self.assertEqual(last_value(calls[1]["args"], "-r"), str(resolution))
                 self.assertEqual(last_value(calls[1]["args"], "--iteration"), "10000")
+
+    def test_blender_random_modes_ignore_mvs_settings_and_need_no_mvs_runner_or_cache(self):
+        for mode in ("coverage", "concat", "balanced"):
+            with self.subTest(mode=mode), tempfile.TemporaryDirectory() as directory:
+                repo, env, log = self.fixture(directory, "blender")
+                # Remove the copied direct-MVS runner so an accidental dispatch
+                # or preflight there fails before the fake Python can mask it.
+                shutil.rmtree(repo / "scripts/mvs_vcd_vcp")
+                env.update(
+                    MVS_COMPLEMENT_MODE=mode, MODE="mvs", DENSITY_CONTROL="none",
+                    MVS_INIT_PATH="/missing/cache/that/must/not/be/read.npz",
+                    MVS_INIT_STRATEGY="adaptive", MVS_INIT_MAX_POINTS="invalid",
+                    MVS_COMPLEMENT_MAX_POINTS="invalid", MVS_COMPLEMENT_TOTAL_POINTS="-1",
+                    MVS_COMPLEMENT_CANDIDATE_POINTS="0", MVS_COMPLEMENT_COVERAGE_PIXELS="NaN",
+                    MVS_COMPLEMENT_DEPTH_SCALE="inf", FAKE_REQUIRE_BLENDER_RANDOM="1",
+                    N_VIEWS="6", GPU_ID="2", ITERATIONS="1000", RESOLUTION="2",
+                )
+                result = self.run_script("train_blender.sh", repo=repo, env=env)
+                self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
+                calls = [json.loads(line) for line in log.read_text().splitlines()]
+                self.assertEqual([call["kind"] for call in calls],
+                                 ["train.py", "render.py", "summarize_mvsdrop_setting.py"])
+                args = calls[0]["args"]
+                self.assertEqual(last_value(args, "--n_views"), "6")
+                self.assertEqual(last_value(args, "--iterations"), "1000")
+                self.assertEqual(last_value(args, "-r"), "2")
+                self.assertEqual(calls[0]["gpu"], "2")
+                self.assertIn("/blender_random/blender6/lego", last_value(args, "-m"))
+
+    def test_blender_none_preserves_explicit_direct_mvs_ablation(self):
+        for total, expected in (("0", "75000"), ("50000", "50000")):
+            with self.subTest(total=total), tempfile.TemporaryDirectory() as directory:
+                repo, env, log = self.fixture(directory, "blender")
+                env.update(MVS_COMPLEMENT_MODE="none", MVS_COMPLEMENT_TOTAL_POINTS=total,
+                           MVS_INIT_MAX_POINTS="75000", MVS_INIT_PATH="/explicit/cache.npz")
+                result = self.run_script("train_blender.sh", repo=repo, env=env)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                args = json.loads(log.read_text().splitlines()[0])["args"]
+                self.assertEqual(last_value(args, "--init_mode"), "mvs_anywhere")
+                self.assertEqual(last_value(args, "--mvs_init_strategy"), "replace")
+                self.assertEqual(last_value(args, "--mvs_complement_mode"), "none")
+                self.assertEqual(last_value(args, "--mvs_init_max_points"), expected)
+                self.assertEqual(last_value(args, "--mvs_init_path"), "/explicit/cache.npz")
+                self.assertEqual(last_value(args, "--density_control"), "vcd_vcp")
+                label = "keep_base" if total == "0" else "budget" + total
+                self.assertIn(f"/none/{label}/blender8/lego", last_value(args, "-m"))
+
+    def test_blender_random_outputs_do_not_reuse_old_mvs_complement_results(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, env, log = self.fixture(directory, "blender")
+            output = Path(directory) / "output with spaces"
+            old_setting = output / "coverage/keep_base/blender8"
+            old_setting.mkdir(parents=True)
+            marker = old_setting / "existing-results.txt"
+            marker.write_text("preserve old MVS results", encoding="utf-8")
+            env["OUTPUT_ROOT"] = str(output)
+            first = self.run_script("train_blender.sh", repo=repo, env=env)
+            self.assertEqual(first.returncode, 0, first.stderr)
+            original = log.read_text()
+            self.assertEqual(marker.read_text(), "preserve old MVS results")
+            self.assertTrue((output / "blender_random/blender8/lego/manifest.json").exists())
+            for mode in ("coverage", "concat", "balanced"):
+                repeated = self.run_script("train_blender.sh", repo=repo, env=dict(
+                    env, MVS_COMPLEMENT_MODE=mode, MVS_COMPLEMENT_TOTAL_POINTS="50000"))
+                self.assertEqual(repeated.returncode, 2)
+                self.assertIn("fresh OUTPUT_ROOT", repeated.stderr)
+                self.assertEqual(log.read_text(), original)
 
     def test_failed_training_stops_matrix_without_render_or_fallback(self):
         with tempfile.TemporaryDirectory() as directory:

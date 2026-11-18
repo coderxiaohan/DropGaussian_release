@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Initialization-only comparison. The downstream DropGaussian and VCD/VCP
-# implementations are shared with the existing direct-MVS baseline.
+# Geometry-complement initialization on real datasets, original random
+# initialization on Blender. Downstream DropGaussian and VCD/VCP are shared.
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "$script_dir/../.." && pwd)
 dataset=${1:?A dataset is required}
@@ -52,16 +52,20 @@ while (( $# )); do
             printf '%s\n' \
                 "Usage: bash scripts/mvs_complement/train_${dataset}.sh [--dry-run] [train.py arguments...]" \
                 '' \
-                'Preserve reconstructed geometry; use MVS to complement training-view coverage.' \
-                'Only initialization changes; DropGaussian and VCD/VCP remain unchanged.' \
+                'Real datasets: preserve reconstructed geometry and use MVS to complement training-view coverage.' \
+                'Blender main method: original DropGaussian random initialization (10000 points), without MVS.' \
+                'Only initialization changes; DropGaussian and VCD/VCP (EGD/TBP) remain unchanged.' \
                 "Defaults: all configured ${dataset} scenes, ${default_views} training views, 10000 iterations, GPU 0." \
                 'All scenes does not mean all input views; N_VIEWS controls sparse-view training.' \
                 'MVS_COMPLEMENT_MODE: coverage (default), concat, balanced, or none.' \
+                'Blender coverage/concat/balanced all use random initialization, with no MVS cache or depth preflight.' \
+                'Blender random initialization ignores all MVS_COMPLEMENT_* budgets/selection settings and MVS_INIT_* settings.' \
+                'The coverage/concat/balanced selection and budgets below apply to real datasets only.' \
                 'coverage: coverage-aware MVS selection; requires compatible training-view depth caches.' \
                 'concat: original reconstructed cloud plus MVS, without coverage selection.' \
                 'balanced: same source quotas and depth-supported, positive-novelty candidate pool as coverage,' \
                 '          but samples that pool uniformly; also requires compatible training-view depth caches.' \
-                'none: original direct-MVS baseline; no original geometry is retained.' \
+                'none: explicit direct-MVS ablation on every dataset, including Blender; no original geometry is retained.' \
                 'none with TOTAL_POINTS>0 sets the direct-MVS budget to that total (overrides MVS_INIT_MAX_POINTS).' \
                 'none with TOTAL_POINTS=0 uses MVS_INIT_MAX_POINTS (default: 100000).' \
                 'MVS_COMPLEMENT_MAX_POINTS: added MVS budget (default: 100000).' \
@@ -71,15 +75,17 @@ while (( $# )); do
                 'MVS_COMPLEMENT_CANDIDATE_POINTS: MVS candidate pool (default: 500000).' \
                 'MVS_COMPLEMENT_COVERAGE_PIXELS: coverage radius in depth-cache pixels, not resized training-image pixels (default: 2.0).' \
                 'MVS_COMPLEMENT_DEPTH_SCALE: relative-depth agreement scale (default: 0.02).' \
-                'Random clouds (including Blender random initialization) are not reconstructed geometry.' \
-                'Without valid reconstructed geometry, the initializer uses direct MVS and records the fallback.' \
+                'Random clouds are not reconstructed geometry; Blender random initialization is an explicit dataset policy.' \
+                'Real datasets without valid reconstructed geometry use direct MVS and record the fallback.' \
                 'Baseline geometry assets are reused; their training-view-only provenance is not independently verified.' \
-                'Missing/incompatible MVS caches are errors, not random-cloud fallbacks.' \
-                'Forces MODE=mvs, strategy=replace, density_control=vcd_vcp.' \
+                'MVS branches treat missing/incompatible caches as errors, not random-cloud fallbacks.' \
+                'Blender random forces MODE=dropgaussian; MVS branches force MODE=mvs and strategy=replace.' \
+                'All branches force density_control=vcd_vcp.' \
                 'Overrides: N_VIEWS, GPU_ID, SCENES, DATA_ROOT, ITERATIONS, RESOLUTION,' \
                 'PYTHON_BIN, OUTPUT_ROOT, MVS_INIT_PATH, MVS_INIT_MAX_POINTS, DTU_MASK_ROOT, SEED, PORT.' \
                 'Use environment settings, not CLI source/model/dataset/iteration/resolution/method options.' \
-                'OUTPUT_ROOT is a parent: <root>/<mode>/<keep_base or budgetN>/<dataset><views>.' \
+                'OUTPUT_ROOT is a parent: Blender random uses <root>/blender_random/blender<views>.' \
+                'MVS branches use <root>/<mode>/<keep_base or budgetN>/<dataset><views>.' \
                 'Default parent: <repo>/output/mvs_complement. Existing nonempty settings are never reused.' \
                 "Example: GPU_ID=0 N_VIEWS=${default_views} bash scripts/mvs_complement/train_${dataset}.sh" \
                 'DRY_RUN=1 or --dry-run prints dispatch only, without data checks or output writes.' \
@@ -96,25 +102,31 @@ case "$complement_mode" in
     none|coverage|concat|balanced) ;;
     *) echo "MVS_COMPLEMENT_MODE must be none, coverage, concat, or balanced." >&2; exit 2 ;;
 esac
-max_points=${MVS_COMPLEMENT_MAX_POINTS:-100000}
-total_points=${MVS_COMPLEMENT_TOTAL_POINTS:-0}
-candidate_points=${MVS_COMPLEMENT_CANDIDATE_POINTS:-500000}
-coverage_pixels=${MVS_COMPLEMENT_COVERAGE_PIXELS:-2.0}
-depth_scale=${MVS_COMPLEMENT_DEPTH_SCALE:-0.02}
-for name in max_points candidate_points; do
-    if ! [[ "${!name}" =~ ^[1-9][0-9]*$ ]]; then
-        echo "$name must be a positive integer." >&2; exit 2
-    fi
-done
-if ! [[ "$total_points" =~ ^(0|[1-9][0-9]*)$ ]]; then
-    echo "MVS_COMPLEMENT_TOTAL_POINTS must be zero or a positive integer." >&2; exit 2
+blender_random=0
+if [[ "$dataset" == blender && "$complement_mode" != none ]]; then
+    blender_random=1
 fi
-for name in coverage_pixels depth_scale; do
-    if ! [[ "${!name}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$ ]] || \
-        ! awk -v value="${!name}" 'BEGIN { number = value + 0; formatted = sprintf("%g", number); exit !(number > 0 && formatted !~ /[Ii][Nn][Ff]|[Nn][Aa][Nn]/) }'; then
-        echo "$name must be a positive finite number." >&2; exit 2
+if [[ "$blender_random" == 0 ]]; then
+    max_points=${MVS_COMPLEMENT_MAX_POINTS:-100000}
+    total_points=${MVS_COMPLEMENT_TOTAL_POINTS:-0}
+    candidate_points=${MVS_COMPLEMENT_CANDIDATE_POINTS:-500000}
+    coverage_pixels=${MVS_COMPLEMENT_COVERAGE_PIXELS:-2.0}
+    depth_scale=${MVS_COMPLEMENT_DEPTH_SCALE:-0.02}
+    for name in max_points candidate_points; do
+        if ! [[ "${!name}" =~ ^[1-9][0-9]*$ ]]; then
+            echo "$name must be a positive integer." >&2; exit 2
+        fi
+    done
+    if ! [[ "$total_points" =~ ^(0|[1-9][0-9]*)$ ]]; then
+        echo "MVS_COMPLEMENT_TOTAL_POINTS must be zero or a positive integer." >&2; exit 2
     fi
-done
+    for name in coverage_pixels depth_scale; do
+        if ! [[ "${!name}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$ ]] || \
+            ! awk -v value="${!name}" 'BEGIN { number = value + 0; formatted = sprintf("%g", number); exit !(number > 0 && formatted !~ /[Ii][Nn][Ff]|[Nn][Aa][Nn]/) }'; then
+            echo "$name must be a positive finite number." >&2; exit 2
+        fi
+    done
+fi
 n_views=${N_VIEWS:-$default_views}
 gpu_id=${GPU_ID:-0}
 if ! [[ "$n_views" =~ ^[1-9][0-9]*$ ]]; then
@@ -128,12 +140,16 @@ case "$dry_run" in
     *) echo "DRY_RUN must be 0 or 1." >&2; exit 2 ;;
 esac
 
-budget_label=keep_base
-if [[ "$total_points" != 0 ]]; then
-    budget_label="budget${total_points}"
-fi
 output_parent=${OUTPUT_ROOT:-$repo_root/output/mvs_complement}
-setting_output="${output_parent%/}/${complement_mode}/${budget_label}/${dataset}${n_views}"
+if [[ "$blender_random" == 1 ]]; then
+    setting_output="${output_parent%/}/blender_random/blender${n_views}"
+else
+    budget_label=keep_base
+    if [[ "$total_points" != 0 ]]; then
+        budget_label="budget${total_points}"
+    fi
+    setting_output="${output_parent%/}/${complement_mode}/${budget_label}/${dataset}${n_views}"
+fi
 if [[ "$dry_run" == 0 && ( -e "$setting_output" || -L "$setting_output" ) ]]; then
     if [[ ! -d "$setting_output" ]]; then
         echo "Output setting path already exists and is not a directory: $setting_output" >&2
@@ -147,22 +163,30 @@ if [[ "$dry_run" == 0 && ( -e "$setting_output" || -L "$setting_output" ) ]]; th
         exit 2
     fi
 fi
-command=(env MODE=mvs MVS_INIT_STRATEGY=replace DENSITY_CONTROL=vcd_vcp)
-if [[ "$complement_mode" == none && "$total_points" != 0 ]]; then
-    # The core's mode=none bypasses complement processing. Apply the requested
-    # fair-comparison budget to the unchanged direct-MVS loader itself.
-    command+=("MVS_INIT_MAX_POINTS=$total_points")
+if [[ "$blender_random" == 1 ]]; then
+    echo "Blender main method: original DropGaussian random initialization (10000 points), no MVS/cache requirement; VCD/VCP (EGD/TBP) retained." >&2
+    echo "Blender ignores MVS_COMPLEMENT_* budgets/selection settings and MVS_INIT_* settings; use MVS_COMPLEMENT_MODE=none for the direct-MVS ablation." >&2
+    command=(env MODE=dropgaussian DENSITY_CONTROL=vcd_vcp
+        "N_VIEWS=$n_views" "GPU_ID=$gpu_id" "OUTPUT_ROOT=$setting_output"
+        bash "$script_dir/../dropgaussian_vcd_vcp/train_blender.sh" "${train_args[@]}")
+else
+    command=(env MODE=mvs MVS_INIT_STRATEGY=replace DENSITY_CONTROL=vcd_vcp)
+    if [[ "$complement_mode" == none && "$total_points" != 0 ]]; then
+        # The core's mode=none bypasses complement processing. Apply the requested
+        # fair-comparison budget to the unchanged direct-MVS loader itself.
+        command+=("MVS_INIT_MAX_POINTS=$total_points")
+    fi
+    command+=(
+        "N_VIEWS=$n_views" "GPU_ID=$gpu_id" "OUTPUT_ROOT=$setting_output"
+        bash "$script_dir/../mvs_vcd_vcp/train_${dataset}.sh"
+        "${train_args[@]}"
+        --mvs_complement_mode "$complement_mode"
+        --mvs_complement_max_points "$max_points"
+        --mvs_complement_total_points "$total_points"
+        --mvs_complement_candidate_points "$candidate_points"
+        --mvs_complement_coverage_pixels "$coverage_pixels"
+        --mvs_complement_depth_scale "$depth_scale")
 fi
-command+=(
-    "N_VIEWS=$n_views" "GPU_ID=$gpu_id" "OUTPUT_ROOT=$setting_output"
-    bash "$script_dir/../mvs_vcd_vcp/train_${dataset}.sh"
-    "${train_args[@]}"
-    --mvs_complement_mode "$complement_mode"
-    --mvs_complement_max_points "$max_points"
-    --mvs_complement_total_points "$total_points"
-    --mvs_complement_candidate_points "$candidate_points"
-    --mvs_complement_coverage_pixels "$coverage_pixels"
-    --mvs_complement_depth_scale "$depth_scale")
 if [[ "$dry_run" == 1 ]]; then
     printf '%q ' "${command[@]}"
     printf '\n'

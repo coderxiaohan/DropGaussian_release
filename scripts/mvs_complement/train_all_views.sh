@@ -12,17 +12,21 @@ for argument in "$@"; do
             printf '%s\n' \
                 'Usage: bash scripts/mvs_complement/train_all_views.sh [--dry-run] [train.py arguments...]' \
                 '' \
-                'Sequential geometry-preserving MVS initialization + unchanged DropGaussian and VCD/VCP.' \
+                'Real datasets: geometry-preserving MVS initialization + unchanged DropGaussian and VCD/VCP (EGD/TBP).' \
+                'Blender main method: original DropGaussian random initialization (10000 points), without MVS.' \
                 'MVS_COMPLEMENT_MODE selects coverage (default), concat, balanced, or none.' \
+                'Blender coverage/concat/balanced ignore MVS budgets/selection settings and need no MVS cache or depth preflight.' \
+                'Mode none is the explicit direct-MVS ablation, including on Blender.' \
                 'Default MATRIX: llff:3 llff:6 llff:9 dtu:3 dtu:6 dtu:9 mipnerf360:12 mipnerf360:24 blender:8.' \
                 'All configured scenes: 91 runs total, one per scene/setting; no multi-seed repetitions.' \
-                'MVS_COMPLEMENT_TOTAL_POINTS=0 keeps all original geometry; positive budgets may subsample it.' \
-                'Coverage and balanced need training-view depth caches; random base clouds are not geometric anchors.' \
+                'Real datasets: MVS_COMPLEMENT_TOTAL_POINTS=0 keeps all original geometry; positive budgets may subsample it.' \
+                'Real-dataset coverage and balanced need training-view depth caches; random clouds are not geometric anchors.' \
                 'Balanced uses coverage source quotas and eligible candidates, but uniform sampling.' \
                 'None with a positive total budget applies that budget to the direct-MVS loader.' \
                 'Baseline geometry training-view-only provenance is not independently verified.' \
                 'GPU priority: GPU_<DATASET>_<VIEWS> > GPU_<DATASET> > GPU_ID > 0.' \
-                'OUTPUT_ROOT is a parent; each setting adds <mode>/<keep_base or budgetN>/<dataset><views>.' \
+                'OUTPUT_ROOT is a parent; Blender random adds blender_random/blender<views>.' \
+                'MVS settings add <mode>/<keep_base or budgetN>/<dataset><views>.' \
                 'MATRIX replaces inherited N_VIEWS. Use N_VIEWS with individual dataset scripts.' \
                 'DATA_ROOT, SCENES and explicit cache paths should only be used for a compatible subset.' \
                 '--dry-run or DRY_RUN=1 prints dispatch only, writes nothing, needs no GPU/data.' \
