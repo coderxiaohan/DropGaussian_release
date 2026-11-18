@@ -1,0 +1,46 @@
+Tool: built-in image_gen
+Edit target: article/figures/geometry_complement_egd_tbp_pipeline_v8.png
+Scope: balanced concise explanatory annotations; figure only.
+
+Edit the supplied academic pipeline figure. Image 1 is the actual edit target, not merely inspiration. The user says the last revision has too few explanatory annotations. Make a balanced, publication-quality version: KEEP the dominant pictures and arrows, but add concise, useful captions explaining the key operations and decision criteria. Do not turn it into a text-heavy flowchart.
+
+Preserve the complete overall layout, the same bonsai scene, all point clouds and ellipsoids, light blue/lavender/mint palette, white background, dashed rounded panel outlines, aligned module header bands, and existing arrow topology. Use a sharp landscape canvas around 2400 × 1350 with crisp readable English serif labels. Slightly expand spacing within panels as necessary to fit captions, without shrinking illustrations into tiny thumbnails. There is no need for a new figure title outside the panels. No logos, watermarks, DropGaussian, FastGS, VCD, or VCP.
+
+TYPOGRAPHIC HIERARCHY
+Keep four panels: "(a) Overview", "(b) Geometry completion", "(c) EGD", "(d) TBP". Keep the aligned group bands "1 Initialization" and "2 Density control". Panel headers must occupy dedicated top padding and never touch borders or overlap images. In lower panel (c), add a modest subtitle "Error-guided densification"; in lower panel (d), add "Trial-based pruning". These full names appear only once. Keep short captions close to their corresponding image, smaller than panel headers but clearly readable. No paragraphs and no sentences longer than the indispensable pruning criterion. Use about 140–170 total words across the entire figure; do not add a separate explanatory legend or repeated slogans.
+
+TARGETED ANNOTATION CHANGES
+Top overview:
+1. Replace "Training views" with "Sparse views + poses".
+2. Keep "Base cloud"; add a compact "Depths + points" caption under the MVSAnywhere pictorial output. Keep its frozen snowflake.
+3. In the geometry completion box retain the title and add one short small caption "Preserve base · fill gaps".
+4. Give G0 the caption "Initial Gaussians", Gt "Current Gaussians", and G* "Optimized Gaussians" using restrained small lettering next to the existing mathematical labels. Avoid collisions.
+5. Keep the render/loss and update training loop. Above the incoming top supervision arrow add "Training-image supervision".
+6. Keep the diagnostic box "Diagnostics" with "Dropout OFF" and its periodic indicator.
+7. Keep the EGD (c) and TBP (d) cards visually prominent and parallel. In the EGD card, caption the heatmap pair "Multi-view error support" and the ellipsoid split illustration "Clone / split". In the TBP card, caption the ghosted ellipsoid trial "Joint trial removal" and the rendered check images "Validate across views". Do not add sub-boxes around these captions.
+
+Lower (b):
+- Preserve the blue base-cloud bypass and replace its short "Preserve" label with "Keep original geometry".
+- Under the depth-map pair label "Depth agreement" and "≥2 views".
+- Replace "Coverage" with "Fill uncovered regions" below the existing before/after coverage illustrations.
+- Keep the important footer "No reconstruction → direct MVS".
+- The blue base cloud must both bypass to the union and feed the coverage reference via its existing downward branch.
+
+Lower (c):
+- Keep the two training-view/heatmap pairs with consistent region highlights, green checks, gradient/size pictogram, AND junction, and clone/split images.
+- Use "Multi-view error support" under the heatmap pair.
+- Keep "Gradient / size" below its separate pictogram.
+- Add "Both required" near the AND junction without crowding the arrows.
+- Keep "Clone / split" beneath the split ellipsoids. Add "Keep" under the faded unsplit ellipsoid only if there is enough whitespace.
+- IMPORTANT: multi-view error support and gradient/size are two independent inputs into the AND junction, and then go to clone/split. Never draw gradient criteria as a serial consequence of multi-view support. This is support gating, not a guarantee that densification improves quality.
+
+Lower (d):
+- Add "Low-contribution set" above the candidate ellipsoid group, below the panel subtitle.
+- Keep "Joint trial" under the temporary removal illustration.
+- Keep the before/trial comparison grid with multiple training views and "All train views".
+- Replace the small vague "Loss check" with a comfortably sized decision callout reading, on short lines: "No loss increase" / "in every train view?"
+- The green branch goes to fewer Gaussians labelled "Prune"; the red branch goes to the unchanged candidates labelled "Keep".
+- Make clear this tests a joint candidate-set removal, evaluates only training images, and either accepts or rejects the candidate batch. Do not imply test-set evaluation or guaranteed generalization.
+
+CRITICAL GRAPH INVARIANTS
+Do not invent new arrows or processing stages. In overview, current Gaussians feed diagnostics; diagnostics fork into EGD and TBP in parallel; these branches join the existing feedback route back into the current Gaussians. Keep the large bottom feedback arrow ending at the LEFT current-Gaussians input, not a backwards arrow pointing up from the feedback line into the branch outputs. Do not put a plus sign at that feedback junction. Parameter-update feedback stays separate. Novel-view rendering remains an output after optimization. Preserve all existing mathematical semantics while adding legible short annotations.

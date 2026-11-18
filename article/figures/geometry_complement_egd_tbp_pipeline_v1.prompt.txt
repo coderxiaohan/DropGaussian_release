@@ -1,0 +1,54 @@
+Use case: scientific-educational.
+Asset type: a high-resolution, publication-quality computer-vision method pipeline figure for a paper and PPT, landscape approximately 2:1 aspect ratio, preferably 3840 x 1920.
+
+Primary request: draw the CURRENT implemented DropGaussian extension, with geometry-complementary MVS initialization and two density operations named EGD and TBP. English labels, concise and perfectly legible. Follow this supplied-reference style: one broad upper overview inside a rounded dashed boundary, three aligned lower module-detail panels with pastel backgrounds and dashed boundaries, thin black orthogonal arrows, black serif academic typography, miniature 3D point-cloud and Gaussian illustrations integrated with the flow. White page background. Muted pale blue, lavender, mint, warm orange. Lots of breathing room; not a wall of tiny boxes. No watermark, logos, institutional branding or decorative airplane. Use the same small potted bonsai as the illustrative scene throughout. Colored dots show points; translucent ellipsoids show Gaussians. This is a fresh method diagram, not a copy of the reference's architecture. Do not draw attention, token embedding, prompts, neural layers, TPS, surface alignment or uncertainty-based opacity.
+
+LAYOUT:
+Upper panel about 48% of canvas height: "(a) Overall pipeline".
+Lower panel row about 46% of height; left panel 38% width, middle 29%, right 33%. Label the three panels "(b)", "(c)", "(d)" and connect them semantically with matching labels in upper overview, not many spanning arrows.
+Use panel group labels to make TWO conceptual modules clear: lower (b) is "Module 1: Geometry-complementary initialization"; lower (c) and (d) jointly belong to "Module 2: Multi-view density control". EGD and TBP are parallel decision modules, NOT a cascade. NO method names FastGS, VCD, VCP, CAPA anywhere in this figure; do not claim global novelty or performance guarantees.
+
+UPPER OVERVIEW precise flow:
+Far-left "Sparse training views + poses": three thumbnails of the bonsai from different angles with small camera frustums.
+Two input routes from these views:
+1. "Original reconstruction" shown as a blue bonsai point cloud. This represents the baseline reconstruction asset.
+2. "MVSAnywhere" with a small snowflake icon indicating a frozen pretrained model, producing "Depth maps + MVS points" shown as colored depth thumbnails and orange points.
+Both flow into a pale-blue block "Geometry-complementary initialization (b)", with small subtitle "Once, before training".
+That outputs a blue-and-orange cloud of ellipsoids labeled "Initial Gaussians".
+Continue to a clearly enclosed light-grey training area with a flame icon and label "DropGaussian optimization (unchanged)".
+Inside this area keep the main loop very clear and minimal: "Current Gaussians" -> "Render + photometric loss" -> "Parameter update", with a return arrow to "Current Gaussians" labelled "Iterate". Show the sparse training views supplying image supervision to this training area via a thin routed arrow.
+A separate branch from "Current Gaussians" goes to a small box "Multi-view diagnostics" with subtitle "Training views • dropout OFF". It branches in parallel into a lavender chip "EGD (c)" and mint chip "TBP (d)". Both rejoin at "Density update" returning to "Current Gaussians"; label branch "Periodic". The standard photometric training still uses DropGaussian; ONLY diagnostics disable dropout. Do not connect EGD output into TBP. No MVS recomputation inside this training loop.
+After training an exit arrow from the training area labelled "After training" goes to a refined Gaussian bonsai "Optimized Gaussians" and then two clean small bonsai thumbnails "Novel views".
+Small legend, unobtrusive: blue dots "Original points", orange dots "Added MVS points", snowflake "Frozen", flame "Optimized".
+The overview's labels must stay comfortably readable; use compact multiline labels and graphical icons.
+
+LOWER LEFT PANEL (b), pale blue:
+Header "Geometry-complementary initialization"
+Depict two paths:
+- upper path: blue "Original points" cloud passes through a straight arrow labelled "Preserve" to a visible union/merge symbol and a combined cloud at far right labelled "Initial Gaussians".
+- lower path: orange "MVS candidates" -> "Multi-view depth support" -> "Coverage-aware selection" -> the same merge symbol.
+Near "Multi-view depth support" show two small camera/image planes and consistent orange points with a small check; exact short annotation "At least 2 views".
+A thin routed arrow from "Original points" to "Coverage-aware selection" makes it clear coverage is measured relative to the original cloud. Illustrate a blue projected point pattern with a gap, orange points filling the gap, and faded grey redundant candidates. Exact short annotation "Fill coverage gaps".
+Do NOT change original point coordinates or add confidence-dependent Gaussian attributes. Include a readable narrow grey fallback strip at the bottom: "No reconstructed base → direct MVS". This strip is an alternate path, NOT an additional step after merging; no arrow toward random initialization. Tiny footer, if room: "One-time initialization".
+
+LOWER MIDDLE PANEL (c), pale lavender:
+Header "EGD: Error-Guided Densification"
+Input "Current Gaussians" and "Diagnostic renders".
+Show two/three training-view thumbnails and their heatmaps, then arrows to "Multi-view error support".
+Illustrate the SAME Gaussian marked in two different views, receiving check marks when its rendering contribution is concentrated in high-error areas.
+Then "Original gradient / size criteria" together with "Multi-view error support" feed a small AND gate.
+Arrow to "Selective clone / split", illustrated by one eligible translucent ellipsoid becoming a few smaller ellipsoids. A neighboring unsupported ellipsoid remains unchanged.
+Short bottom explanation: "Refine where multiple views support".
+Do not say that the split is guaranteed to reduce loss. This is an eligibility gate on the original densification rule, not a new split direction or a learned optimizer.
+
+LOWER RIGHT PANEL (d), pale mint:
+Header "TBP: Trial-Based Pruning"
+Flow "Low-contribution candidates" -> "Joint trial removal" -> a decision diamond "Training loss non-increasing in every view?"
+Illustrate several faded redundant ellipsoids outlined orange and their tentative absence together in a small proxy render, NOT deletion one-by-one.
+Decision has two clear paths: green "Yes" -> "Accept removal", red/grey "No" -> "Keep candidates".
+Small contribution inset shows multiple training views; a useful point in any observed view is retained. Avoid excessive text.
+Short bottom explanation: "Validate the whole candidate batch".
+This checks current training-view photometric loss up to numeric roundoff only; do not label it a test-quality guarantee. Other baseline cleanup remains unchanged and is not illustrated as covered by this check.
+
+RENDERING CONSTRAINTS:
+All arrow directions must be unambiguous. No crossed arrows, arrows through text, duplicate labels or invented equations. Avoid more than the simple symbols +, >=2, and the minimal diagram decision text. Black bold serif panel titles; readable consistent black serif labels. Keep pastel blocks and dashed borders subtle. Point clouds should look like actual granular 3D geometry and Gaussians like translucent anisotropic ellipsoids, not generic network neurons. Use real schematic bonsai geometry consistently in inputs, point clouds, heatmaps and outputs. Clear at full page and in slides. Provide the complete figure with clean margins, not a mockup on a screen or paper.

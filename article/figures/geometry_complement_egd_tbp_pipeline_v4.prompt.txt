@@ -1,0 +1,77 @@
+Tool: built-in image_gen
+Edit target: article/figures/geometry_complement_egd_tbp_pipeline_v3.png
+Scope: figure only; paper text and training code unchanged.
+
+Use case: precise-object-edit / scientific diagram revision.
+Input image 1 is the EXISTING pipeline figure to revise, not a new scientific method. Preserve its accurate content, potted-bonsai scene, point-cloud / Gaussian illustrations, blue-orange source coding, pastel blue/lavender/mint panels, black serif typography, rounded dashed boundaries, and overall upper-overview/lower-details organization. This is a paper figure, not a slide screenshot. Do not copy any red markup or dark screen border from the user's screenshots.
+
+USER'S THREE REQUESTS:
+(1) Fix the lower title positioning and hierarchy.
+(2) Remove the word "DropGaussian" completely from the FIGURE. Replace "DropGaussian-based optimization" with the neutral title "Gaussian optimization". Do not insert another baseline or paper name. Keep MVSAnywhere as the frozen geometry network name.
+(3) Make EGD and TBP prominent and understandable in the OVERALL pipeline, not tiny acronym-only chips.
+
+CANVAS / PRIORITIES:
+Reflow onto a roomy landscape canvas around 16:9, preferably high resolution. Give the upper overview about 56% of the height, the lower detail panels about 40%, and comfortable gutters. Allow more width to the optimization/density region; moderately compact the initialization and output illustration groups without discarding their meaning. Legible typography, consistent sizes. EGD and TBP overview cards should each be AT LEAST twice as wide and twice as tall as their current tiny chips. Large bold names and visible operations. Never shrink the operation labels to tiny footnotes.
+
+TOP OVERVIEW:
+Keep "(a) Overall pipeline" in a dedicated padded title area inside its dashed frame.
+Retain the left input flow:
+"Sparse training views + poses" branches to "Original reconstruction" (blue point cloud) and frozen "MVSAnywhere" (depth maps + orange MVS points); these feed "Geometry-complementary initialization (b)" with subtitle "One-time initialization", outputting "Initial Gaussians".
+Keep image supervision from training views to the optimization region.
+Give the central/right "Gaussian optimization" area ample space. Its TOP lane clearly shows:
+"Current Gaussians" -> "Render + photometric loss" -> "Parameter update" -> return to Current Gaussians, labelled "Iterate".
+Its LOWER lane is a separate periodic diagnostic branch:
+"Current Gaussians" -> "Multi-view diagnostics" with subtitle "All training views • dropout OFF".
+From ONE shared diagnostic node, FORK in parallel into TWO LARGE color-coded cards. Prefer two vertically stacked wide cards with separate branch arrows. They are parallel operations on the SAME current Gaussian state; there must be NO arrow from EGD to TBP or vice versa.
+
+LAVENDER OVERVIEW CARD:
+Large header: "EGD (c)"
+Full-name subtitle: "Error-Guided Densification"
+Inside use three short readable lines connected by mini-arrows:
+"Multi-view error support"
+"AND gradient / size rules"
+"Clone / split"
+Include a small simple illustration of one selected ellipsoid becoming several smaller ellipsoids, if space permits. No guarantee language.
+
+MINT OVERVIEW CARD:
+Large header: "TBP (d)"
+Full-name subtitle: "Trial-Based Pruning"
+Inside use three short readable lines:
+"Low-contribution candidates"
+"Joint trial + loss check"
+"Accept: prune / Reject: keep"
+Include two faint outlined candidate ellipsoids and a small check/cross, if space permits.
+The loss check is on EVERY CURRENT TRAINING VIEW, not just the summed average or a test view.
+
+Independent outputs from both cards join a small "Apply density decisions" box. Draw its OUTPUT feedback arrow back INTO "Current Gaussians", using the outer bottom margin. The arrow must visibly enter the Gaussian state, not point backwards into the density update. EGD and TBP operate periodically, unlike the one-time initialization. The rendered novel-view output is ONLY after training; it does not feed either diagnostic module.
+
+At far right retain the refined Gaussian bonsai and novel-view thumbnails, with an exit arrow labelled "After training". The output drawings may be stacked compactly to give the two overview cards enough space.
+Keep the snowflake frozen / flame optimized legend, discreet and not competing with the title.
+
+LOWER TITLES: FIX THE EXACT ISSUE THE USER MARKED.
+Use two matching outer group frames with their OWN padded header bands on the SAME horizontal baseline:
+- Left group, above the blue detail panel: "Module 1: Geometry initialization"
+- Right group, spanning lavender EGD and mint TBP detail panels: "Module 2: Multi-view density control"
+The Module 2 heading MUST be horizontally CENTERED over the combined width of the two right panels, WITHIN a generous clear header band. It must NOT sit on a dashed border or be jammed into the gap between panels. Align the Module 1 group heading to the same height and use the same font size/weight.
+Below those group bands, place the three detail headings on ONE shared horizontal line and with the SAME inner top padding:
+"(b) Geometry-complementary initialization"
+"(c) EGD: Error-Guided Densification"
+"(d) TBP: Trial-Based Pruning"
+Allow two-line headings if needed, with equal allocated title-band height for all three. No text touches an edge or overlaps a dotted boundary. Only ONE instance of each panel letter; no "(c)" before Module 2.
+
+PRESERVE LOWER DETAIL LOGIC:
+(b) Original points -> Preserve -> merge. MVS candidates -> Multi-view depth support ("At least 2 views") -> Coverage-aware selection ("Fill coverage gaps") -> merge -> Initial Gaussians. Original points also feed the coverage comparison. Keep readable fallback strip "No reconstructed base → direct MVS". No return to random baseline, no coordinate warping, no learned confidence-dependent Gaussian sizes or opacity.
+(c) Current Gaussians -> Diagnostic renders / multi-view heatmaps -> Multi-view error support. The "Original gradient / size criteria" box and the "Multi-view error support" box are INDEPENDENT inputs to AND -> Selective clone / split. Error-support evidence feeds only the error-support condition, NOT the original-gradient condition. Keep the supported-versus-unchanged Gaussian illustration.
+(d) Low-contribution candidates -> Joint trial removal -> decision "Training loss non-increasing in every view?" -> green Yes: Accept removal; red No: Keep candidates. Keep the contribution inset noting "Useful in any view → retain". No claim of guaranteed novel-view quality.
+Keep EGD lavender and TBP mint consistently between overview and detailed panels, so the eye can directly map (c) and (d).
+
+DO NOT:
+Do not retain "DropGaussian", "FastGS", "VCD", "VCP" or "CAPA" anywhere.
+Do not make EGD/TBP mere small chips again.
+Do not put EGD before TBP in a serial arrow chain.
+Do not confuse photometric parameter updates with periodic topology decisions.
+Do not route arrows through text or clouds.
+Do not invent modules or additional equations.
+Do not remove the no-reconstructed-base fallback or the joint-trial validation.
+No red rectangles, watermarks, screenshots, decorative page borders or logos.
+Return only the clean revised full figure with all labels crisp.

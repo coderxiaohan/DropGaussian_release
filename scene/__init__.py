@@ -92,19 +92,18 @@ class Scene:
         init_mode = getattr(args, "init_mode", "mvs_anywhere")
         if init_mode not in ("colmap_dense", "mvs_anywhere"):
             raise ValueError("init_mode must be 'colmap_dense' or 'mvs_anywhere'")
-        correction = getattr(args, "mvs_geometry_correction", "none")
-        surface_init = getattr(args, "mvs_surface_init", "none")
+        complement_mode = getattr(args, "mvs_complement_mode", "none")
         if not self.loaded_iter:
-            if surface_init not in ("none", "oas"):
-                raise ValueError("mvs_surface_init must be none or oas")
-            if surface_init != "none" and init_mode != "mvs_anywhere":
-                raise ValueError("MVS surface initialization requires init_mode=mvs_anywhere")
-            if surface_init != "none" and correction != "none":
-                raise ValueError("surface initialization must be tested without TPS/geometry correction")
-            if correction not in ("none", "similarity", "tps", "tps_consistent", "tps_local"):
-                raise ValueError("mvs_geometry_correction must be none, similarity, tps, tps_consistent, or tps_local")
-            if correction != "none" and init_mode != "mvs_anywhere":
-                raise ValueError("MVS geometry correction requires init_mode=mvs_anywhere")
+            # Old programmatic configurations must not silently run a different
+            # initializer after the experimental correction modules are removed.
+            for removed_option in ("mvs_geometry_correction", "mvs_surface_init"):
+                if getattr(args, removed_option, "none") != "none":
+                    raise ValueError(f"{removed_option} was removed; use direct MVS or MVS complement initialization")
+            if complement_mode not in ("none", "coverage", "concat", "balanced"):
+                raise ValueError("mvs_complement_mode must be none, coverage, concat, or balanced")
+            if complement_mode != "none":
+                if init_mode != "mvs_anywhere":
+                    raise ValueError("MVS complement initialization requires init_mode=mvs_anywhere")
         self.initialization_metadata = {
             "mode": init_mode,
             "path": str(scene_info.ply_path),
@@ -114,6 +113,34 @@ class Scene:
             strategy = getattr(args, "mvs_init_strategy", "replace")
             resolved_strategy = resolve_mvs_init_strategy(strategy)
             base_point_count = int(scene_info.point_cloud.points.shape[0])
+            base_pcd = scene_info.point_cloud
+            base_ply_path = str(scene_info.ply_path)
+            base_source = getattr(scene_info, "point_cloud_source", "unknown")
+            base_is_geometry = (
+                base_source in ("colmap_dense", "colmap_sparse", "reconstruction")
+                and base_point_count > 0
+            )
+            complement_budget = getattr(args, "mvs_complement_max_points", 100000)
+            total_budget = getattr(args, "mvs_complement_total_points", 0)
+            load_budget = args.mvs_init_max_points
+            if complement_mode != "none":
+                for value, label, minimum in (
+                    (complement_budget, "mvs_complement_max_points", 1),
+                    (total_budget, "mvs_complement_total_points", 0),
+                    (getattr(args, "mvs_complement_candidate_points", 500000),
+                     "mvs_complement_candidate_points", 1),
+                ):
+                    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+                        raise ValueError(f"{label} must be an integer >= {minimum}")
+                if base_is_geometry:
+                    load_budget = complement_budget
+                    if complement_mode in ("coverage", "balanced"):
+                        load_budget = max(load_budget, getattr(args, "mvs_complement_candidate_points", 500000))
+                else:
+                    # No random/unknown base cloud is promoted to a geometric
+                    # anchor. Use exactly the direct loader/selection at this
+                    # budget, rather than re-sampling a larger candidate pool.
+                    load_budget = min(complement_budget, total_budget) if total_budget else complement_budget
             # Direct MVS replacement is shared by every dataset. A missing or
             # incompatible cache must fail instead of silently running baseline.
             mvs_pcd, mvs_path, mvs_metadata = load_mvs_point_cloud(
@@ -121,50 +148,61 @@ class Scene:
                 n_views=args.n_views,
                 train_camera_names=self.train_camera_names,
                 explicit_path=args.mvs_init_path,
-                max_points=args.mvs_init_max_points,
+                max_points=load_budget,
             )
-            if correction != "none":
-                # Initialization-only: no change to dropout, loss, optimization,
-                # Gaussian attribute rules, or any VCD/VCP operation.
-                from utils.mvs_geometry import correct_mvs_geometry
-                if not mvs_metadata.get("camera_provenance_verified", False):
-                    raise ValueError("geometry correction requires a training-view-verified MVS cache")
-                geometry_cameras = scene_info.train_cameras
+            complement_metadata = None
+            if complement_mode != "none":
+                from utils.mvs_complement import build_complement_cloud
+                if base_is_geometry and not mvs_metadata.get("camera_provenance_verified", False):
+                    raise ValueError("MVS complement requires a training-view-verified MVS cache")
+                complement_cameras = scene_info.train_cameras
                 calibration_metadata = {"source": "provided_camera_info"}
-                camera_bin = os.path.join(args.source_path, "sparse", "0", "cameras.bin")
-                camera_txt = os.path.join(args.source_path, "sparse", "0", "cameras.txt")
-                if os.path.isfile(camera_bin) or os.path.isfile(camera_txt):
-                    from scene.colmap_loader import read_intrinsics_binary, read_intrinsics_text
-                    from utils.train_view_controls import geometry_cameras_with_intrinsics
-                    intrinsics = (read_intrinsics_binary(camera_bin) if os.path.isfile(camera_bin)
-                                  else read_intrinsics_text(camera_txt))
-                    # The legacy reader misinterprets SIMPLE_* parameter order
-                    # in CameraInfo.K. Parse the model correctly only for this
-                    # new geometry step; renderer/training camera data is untouched.
-                    geometry_cameras, calibration_metadata = geometry_cameras_with_intrinsics(
-                        scene_info.train_cameras, intrinsics,
-                    )
-                mvs_pcd, geometry_metadata, controls = correct_mvs_geometry(
-                    mvs_pcd, geometry_cameras, mode=correction,
-                    max_controls=getattr(args, "mvs_geometry_max_controls", 256),
-                    smoothing=getattr(args, "mvs_geometry_smoothing", 0.001),
-                    max_image_size=getattr(args, "mvs_geometry_max_image_size", 1600),
-                    max_features=getattr(args, "mvs_geometry_max_features", 8000),
-                    ratio=getattr(args, "mvs_geometry_ratio", 0.75),
-                    reprojection_px=getattr(args, "mvs_geometry_reprojection_px", 2.0),
-                    min_angle_deg=getattr(args, "mvs_geometry_min_angle_deg", 1.0),
-                    match_radius_px=getattr(args, "mvs_geometry_match_radius_px", 3.0),
-                    local_neighbors=getattr(args, "mvs_geometry_local_neighbors", 64),
+                if base_is_geometry and complement_mode in ("coverage", "balanced"):
+                    camera_bin = os.path.join(args.source_path, "sparse", "0", "cameras.bin")
+                    camera_txt = os.path.join(args.source_path, "sparse", "0", "cameras.txt")
+                    if os.path.isfile(camera_bin) or os.path.isfile(camera_txt):
+                        from scene.colmap_loader import read_intrinsics_binary, read_intrinsics_text
+                        from utils.train_view_controls import geometry_cameras_with_intrinsics
+                        intrinsics = (read_intrinsics_binary(camera_bin) if os.path.isfile(camera_bin)
+                                      else read_intrinsics_text(camera_txt))
+                        # Correct only the copied cameras used for point
+                        # selection. Training/rendering calibration is unchanged.
+                        complement_cameras, calibration_metadata = geometry_cameras_with_intrinsics(
+                            scene_info.train_cameras, intrinsics,
+                        )
+                candidate_sha256 = mvs_metadata["selected_sha256"]
+                mvs_pcd, complement_metadata, complement_arrays = build_complement_cloud(
+                    base_pcd, mvs_pcd, complement_cameras,
+                    mode=complement_mode, mvs_budget=complement_budget,
+                    total_budget=total_budget,
+                    depth_cache_path=os.path.join(os.path.dirname(str(mvs_path)), "mvs_depths_masks.npz"),
+                    base_is_geometry=base_is_geometry,
+                    coverage_pixels=getattr(args, "mvs_complement_coverage_pixels", 2.0),
+                    depth_relative_scale=getattr(args, "mvs_complement_depth_scale", 0.02),
+                    direct_pcd=mvs_pcd if not base_is_geometry else None,
                 )
-                geometry_metadata["calibration"] = calibration_metadata
-                np.savez_compressed(os.path.join(self.model_path, "geometry_controls.npz"), **controls)
-                with open(os.path.join(self.model_path, "geometry_correction.json"), "w") as stream:
-                    json.dump(geometry_metadata, stream, indent=2, sort_keys=True)
-                mvs_metadata["geometry_correction"] = geometry_metadata
-                mvs_metadata["uncorrected_selected_sha256"] = mvs_metadata["selected_sha256"]
-                mvs_metadata["selected_sha256"] = geometry_metadata["output_sha256"]
-                print(f"MVS geometry {correction}: {geometry_metadata['selected_controls']} controls, "
-                      f"median displacement {geometry_metadata['displacement_median']:.6g}")
+                complement_metadata.update({
+                    "base_point_cloud_source": base_source,
+                    "base_path": base_ply_path,
+                    "base_provenance": "inherited_baseline_asset_not_train_view_verified",
+                    "base_camera_provenance_verified": False,
+                    "selection_camera_names": self.train_camera_names,
+                    "mvs_camera_provenance_verified": bool(mvs_metadata.get("camera_provenance_verified", False)),
+                    "calibration": calibration_metadata,
+                    "candidate_sha256": candidate_sha256,
+                })
+                digest = hashlib.sha256()
+                digest.update(np.asarray(mvs_pcd.points, dtype=np.float32).tobytes())
+                digest.update(np.asarray(mvs_pcd.colors, dtype=np.float32).tobytes())
+                mvs_metadata["candidate_selected_sha256"] = candidate_sha256
+                mvs_metadata["selected_sha256"] = digest.hexdigest()
+                complement_metadata["output_sha256"] = digest.hexdigest()
+                np.savez_compressed(os.path.join(self.model_path, "complement_initialization.npz"),
+                                    **complement_arrays)
+                with open(os.path.join(self.model_path, "complement_initialization.json"), "w") as stream:
+                    json.dump(complement_metadata, stream, indent=2, sort_keys=True)
+                print(f"MVS complement {complement_mode}: {base_point_count} input base points; "
+                      f"{len(mvs_pcd.points)} output points. Base asset provenance is inherited, not verified.")
             scene_info = scene_info._replace(
                 point_cloud=mvs_pcd, ply_path=str(mvs_path)
             )
@@ -179,6 +217,23 @@ class Scene:
                     "fused_point_count": int(mvs_pcd.points.shape[0]),
                 }
             )
+            if complement_metadata is not None:
+                mvs_metadata["fusion_policy"] = (
+                    "direct_mvs_no_reconstructed_base"
+                    if complement_metadata.get("fallback") else "baseline_geometry_mvs_complement"
+                )
+                mvs_metadata["complement_initialization"] = complement_metadata
+                # This is a combined cloud, not an MVS-only replacement.
+                mvs_metadata["candidate_load_max_points"] = load_budget
+                mvs_metadata["candidate_selection"] = mvs_metadata.get("selection")
+                mvs_metadata["selection"] = (
+                    "unchanged_direct_mvs" if complement_metadata.get("fallback")
+                    else f"base_plus_{complement_mode}_mvs"
+                )
+                mvs_metadata["selected_point_count"] = int(mvs_pcd.points.shape[0])
+                mvs_metadata["mvs_point_count"] = complement_metadata["selected_mvs_count"]
+                mvs_metadata["selected_base_point_count"] = complement_metadata["selected_base_count"]
+                mvs_metadata["base_camera_provenance_verified"] = False
             self.initialization_metadata = {
                 "mode": init_mode,
                 "base_initialization_sha256": self.base_initialization_sha256,
@@ -232,20 +287,6 @@ class Scene:
                 scene_info.point_cloud,
                 self.cameras_extent,
             )
-            if surface_init != "none":
-                from utils.mvs_surface_init import initialize_surface_covariance
-                # Run once, before training_setup creates the optimizer. Keep
-                # the original Gaussian initializer and all training code intact.
-                surface_metadata, surface_arrays = initialize_surface_covariance(
-                    self.gaussians, scene_info.point_cloud.points,
-                    neighbors=getattr(args, "mvs_surface_neighbors", 32),
-                )
-                self.initialization_metadata["surface_initialization"] = surface_metadata
-                np.savez_compressed(os.path.join(self.model_path, "surface_initialization.npz"),
-                                    **surface_arrays)
-                with open(os.path.join(self.model_path, "surface_initialization.json"), "w") as stream:
-                    json.dump(surface_metadata, stream, indent=2, sort_keys=True)
-                print("MVS surface initialization: OAS-regularized local covariance; XYZ/RGB unchanged")
 
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))

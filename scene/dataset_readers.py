@@ -52,6 +52,9 @@ class SceneInfo(NamedTuple):
     test_cameras: list
     nerf_normalization: dict
     ply_path: str
+    # Provenance category, not a claim that reconstruction used training views
+    # only. Legacy/external PLY files may themselves contain random points.
+    point_cloud_source: str = "unknown"
 
 def topk_(matrix, K, axis=1):
     if axis == 0:
@@ -257,7 +260,9 @@ def readColmapSceneInfo(
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
                            nerf_normalization=nerf_normalization,
-                           ply_path=ply_path)
+                           ply_path=ply_path,
+                           point_cloud_source=("colmap_dense" if ply_path == dense_ply_path
+                                               else "colmap_sparse"))
     return scene_info
 
 def readCamerasFromTransforms(path, transformsfile, white_background, extension=".png"):
@@ -344,9 +349,11 @@ def readNerfSyntheticInfo(
 
     ply_path = os.path.join(path, "points3d.ply")
     pcd = None
+    point_cloud_source = "external"
     if rand_pcd:
         print('Init deterministic in-memory random point cloud.')
     if rand_pcd or not os.path.exists(ply_path):
+        point_cloud_source = "random"
         # Since this data set has no colmap data, we start with random points
         num_pts = 10_000
         print(f"Generating random point cloud ({num_pts})...")
@@ -376,7 +383,8 @@ def readNerfSyntheticInfo(
                            test_cameras=eval_cam_infos,
                            # eval_cameras=eval_cam_infos,
                            nerf_normalization=nerf_normalization,
-                           ply_path=ply_path)
+                           ply_path=ply_path,
+                           point_cloud_source=point_cloud_source)
     return scene_info
 
 def readReplicaSceneInfo(path, images, eval, n_views=3, llffhold=8):
@@ -394,7 +402,9 @@ def readReplicaSceneInfo(path, images, eval, n_views=3, llffhold=8):
     try:
         ply_path = os.path.join(path, "dense/dense.ply")
         pcd = fetchPly(ply_path)
+        point_cloud_source = "reconstruction"
     except:
+        point_cloud_source = "random"
         ply_path = os.path.join(path, "points3d.ply")
         num_pts = 10_000
         print(f"Generating random point cloud ({num_pts})...")
@@ -420,7 +430,8 @@ def readReplicaSceneInfo(path, images, eval, n_views=3, llffhold=8):
                            train_cameras=train_cam_infos,
                            test_cameras=test_cam_infos,
                            nerf_normalization=nerf_normalization,
-                           ply_path=ply_path)
+                           ply_path=ply_path,
+                           point_cloud_source=point_cloud_source)
     return scene_info
 
 sceneLoadTypeCallbacks = {

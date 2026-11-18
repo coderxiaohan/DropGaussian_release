@@ -1,0 +1,478 @@
+\documentclass{article}
+\usepackage{iclr2027_conference,times}
+\usepackage[UTF8,scheme=plain,fontset=fandol]{ctex}
+\setCJKmainfont{FandolSong-Regular.otf}[
+  BoldFont=FandolSong-Bold.otf,
+  ItalicFont=FandolKai-Regular.otf,
+  SmallCapsFont=FandolSong-Regular.otf]
+\setmainfont{texgyretermes-regular.otf}[
+  BoldFont=texgyretermes-bold.otf,
+  ItalicFont=texgyretermes-italic.otf,
+  BoldItalicFont=texgyretermes-bolditalic.otf]
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{etoolbox}
+
+\newcommand{\ours}{CAPA}
+\newcommand{\PH}[1]{\textcolor{red}{#1}}
+\newcommand{\pending}{\PH{\textnormal{TBD}}}
+\newcommand{\triplet}{\pending}
+\newcommand{\rself}{r_{\mathrm{self}}}
+\newcommand{\rstruct}{r_{\mathrm{struct}}}
+\newcommand{\ralign}{r_{\mathrm{align}}}
+\newcommand{\PhiDG}{\Phi_{\mathrm{DG}}}
+\DeclareMathOperator{\clip}{clip}
+\DeclareMathOperator{\MAD}{MAD}
+\DeclareMathOperator{\logit}{logit}
+\renewcommand{\figurename}{图}
+\renewcommand{\tablename}{表}
+\renewcommand{\refname}{参考文献}
+\renewenvironment{abstract}{\vskip.075in\centerline{\large 摘要}\vspace{0.5ex}\begin{quote}}{\par\end{quote}\vskip 1ex}
+\makeatletter
+\patchcmd{\@maketitle}{Anonymous authors\\Paper under double-blind review}{匿名作者\\中文翻译版本}{}{}
+\makeatother
+
+\title{信任，但须验证：\\
+面向稀疏视角高斯溅射的\\
+反事实锚定式学习型 MVS 先验准入}
+\author{匿名作者\\中文翻译版本}
+% 本文件是 main.tex 的完整中文译稿，使用 XeLaTeX 或 Tectonic 编译。
+% 保留英文稿的公式、引用键、章节结构和待填结果；不修改英文稿或算法代码。
+% TBD 表示尚未填写或尚未通过协议核验的测量结果，不代表零值。
+% 参考文献保留原始英文条目，便于检索。中文译稿仅供阅读与讨论。
+
+\begin{document}
+\maketitle
+\lhead{\small 中文译稿：供阅读与讨论}
+\begin{center}
+{\small 译自当前英文修订稿；公式与实验状态保持一致，参考文献保留英文原文。}
+\end{center}
+
+\begin{abstract}
+学习式多视图立体（MVS）提供的稠密几何可以改善稀疏视角三维高斯溅射的初始化，但不准确的先验也可能损害有效的重建。本文提出 \ours{}，一种由两个互补模块组成、保留 DropGaussian 基线的初始化方法。第一个模块是\emph{反事实可靠性评估与锚定准入}：将几何与外观一致性同一场景内的错误对应进行比较，并要求基线结构与空间对齐为准入提供支持。MVS 自一致性可以增强这种支持，却不能凭空产生支持。第二个模块是\emph{保留基线的残差初始化}：将所得证据转换为新增高斯的不透明度和形状，同时保留原有高斯属性与训练流程。两个模块将先验是否得到支持与其初始影响如何分配区分开来，而不使用数据集特定的残差截断阈值。当未接纳任何残差时，初始化恢复为基线；这并不保证最终渲染质量不下降。我们制定了覆盖四个数据集、九种稀疏视角设置的评估方案，用于考察重建质量、负迁移、两个模块的作用以及端到端成本。
+\end{abstract}
+
+\section{引言}
+\label{sec:intro}
+
+三维高斯溅射（3DGS）~\citep{kerbl20233d}使用显式、可训练的高斯基元表示场景。稀疏输入视图对大量场景几何只能提供较弱约束，使新视角合成同时对初始化与优化过程敏感。DropGaussian~\citep{park2025dropgaussian}通过随机丢弃高斯缓解这一问题：暂时移除部分基元可以改变可见性，使原本被遮挡的基元获得训练信号。这种正则化改善了表示的优化方式，但不会直接为初始重建覆盖不足的区域提供可靠几何。
+
+学习式多视图立体提供了一种互补的几何来源。MVSAnywhere~\citep{izquierdo2025mvsanywhere}等网络可以从现有视图生成稠密点云，覆盖传统重建遗漏的区域。然而，稠密并不等于准确。学习型先验可能包含位置错误的表面，而不同深度预测中共享的误差仍可能保持自一致。因此，直接替换基线点云，可能会把有用的初始化换成稠密却具有误导性的几何。同样，无条件接纳所有先验点也可能引入遮挡和几何偏差。核心问题不仅是是否使用 MVS，而是\emph{在特定场景中，应让其几何产生多大的影响}。
+
+我们将这一选择表述为\emph{先验准入}（prior admission）问题：保留基线重建，将学习得到的几何视为候选残差，而非替代品。本文方法 \ours{}（\textbf{C}ounterfactual-\textbf{A}nchored \textbf{P}rior \textbf{A}dmission，反事实锚定式先验准入）由两个模块组成。\emph{反事实可靠性评估与锚定准入}判断场景是否支持先验：比较真实点与视图对应和错误对应，并由基线结构及对齐关系提供准入依据。\emph{保留基线的残差初始化}将这些证据转换为新增高斯，使其不透明度和形状随可靠性变化。原始初始化通过独立的保留分支绕过这些修改，与获准接纳的残差共同构成最终初始化。
+
+这一设计区分了两个容易混淆的决策：\emph{场景是否提供了使用该先验的依据}，以及\emph{每个获准接纳的点应以多大强度影响渲染}。它还保留了一条明确的回退路径：当准入机制未产生残差点时，基线初始化保持不变。可靠性计算不接收任何数据集名称；对于结构化重建和随机初始点云，均应用相同规则。不过，该规则能否成功拒绝有害先验，仍需通过实验验证。
+
+本文的贡献包括：
+\begin{itemize}
+\item 提出\textbf{反事实可靠性评估与锚定准入模块}，将场景内对照与非对称跨来源门控结合。基线结构与空间对齐是必要支持，学习型先验的自一致性只能增强、不能取代这种支持。
+\item 提出\textbf{保留基线的残差初始化模块}，将准入强度与局部支持转换为不透明度和几何假设强度。该模块保留原有高斯属性及空残差回退端点，不改变 DropGaussian 的损失、丢弃规则与密度控制。
+\end{itemize}
+实验通过直接 MVS 初始化、针对性组件消融、失败案例以及获取先验的成本，检验这两个模块，而不预先假定先验准入始终有益。
+
+\section{相关工作}
+\label{sec:related}
+
+\paragraph{稀疏视角高斯重建。}
+稀疏视角方法通常通过几何先验补充图像证据，或对重建过程施加正则化。深度引导方法包括 DNGaussian~\citep{li2024dngaussian}和 FSGS~\citep{zhu2024fsgs}；CoR-GS~\citep{zhang2024corgs}与 DropGaussian~\citep{park2025dropgaussian}则对高斯优化进行正则化。本文关注的问题更为具体：保留 DropGaussian 的训练流程，仅改变额外学习型点云进入初始化的方式。高斯的位置与密度仍然可以调整，因此我们不假定优化过程被限制在初始点的空间支撑范围内。
+
+\paragraph{几何先验与可靠性。}
+传统 SfM 与 MVS~\citep{schoenberger2016sfm,schoenberger2016mvs}以及学习式 MVS~\citep{izquierdo2025mvsanywhere}提供了不同来源的初始几何。本文并不改进 MVS 网络本身，而是控制其输出的影响。将真实观测与刻意构造的错误对应进行比较，受到样本内随机化思想~\citep{good2005permutation}的启发；这里得到的是一种用于决策的可靠性分数，而非经过校准的几何正确概率，也不是正式的显著性检验。跨来源一致性提供了超出学习型先验自一致性的证据，但并不意味着不同重建来源的误差在统计上独立。
+
+\section{方法}
+\label{sec:method}
+
+\paragraph{总体思路与模块接口。}
+\label{sec:overview}
+
+输入包括带有相机位姿的训练图像、基线点云 $\mathcal B$ 和学习式 MVS 点云 $\mathcal M$。基线点云就是 DropGaussian 原本会使用的点云，可以来自传统重建，也可以是不具备结构的随机初始化。我们完整保留其原始高斯初始化 $\PhiDG(\mathcal B)$，再决定是否添加残差：
+\begin{equation}
+\mathcal G_0=\PhiDG(\mathcal B)\uplus\Psi(\mathcal M;A,\{\ell'_i\}).
+\label{eq:residual}
+\end{equation}
+其中，$A\in[0,1]$ 控制场景级准入强度，$\ell'_i\in[0,1]$ 描述局部支持程度，$\uplus$ 表示追加新的高斯。图~\ref{fig:pipeline}将两个模块与保持不变的基线分支区分开来。模块一估计并向模块二传递自一致性 $\rself$、场景几何证据 $r_G$、准入强度 $A$ 和局部支持 $\{\ell'_i\}$。模块二结合这些证据与候选几何构造残差 $\Psi$。两者均为初始化时的计算，而非额外的可训练网络或训练损失。
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.94\linewidth}{\centering\small
+\textbf{(a) 总体流程}\\[3pt]
+基线 $\mathcal B \longrightarrow \PhiDG(\mathcal B)$ \quad （属性保持不变）\\
+MVS 候选点 $\mathcal M$ + 可靠性证据 $\longrightarrow$ 残差 $\Psi$\\
+$\PhiDG(\mathcal B)\uplus\Psi \longrightarrow$ 不变的 DropGaussian 训练}}
+\\[6pt]
+\fcolorbox{blue!50!black}{blue!4}{\parbox[c]{0.43\linewidth}{\small
+\textbf{(b) 模块一：可靠性评估与准入}\\[3pt]
+训练观测 + $\mathcal B$ + $\mathcal M$\\
+真实对应与错误对应的比较\\
+基线结构 + 空间对齐\\
+全局证据：$\rself,\ r_G,\ A$\\
+逐点自一致性 + 锚点支持 $\to\ell'_i$}}
+\hfill$\longrightarrow$\hfill
+\fcolorbox{orange!70!black}{orange!5}{\parbox[c]{0.43\linewidth}{\small
+\textbf{(c) 模块二：保留基线的残差初始化}\\[3pt]
+候选点 + 模块一传递的证据\\
+不透明度：控制初始影响\\
+形状：各向同性到 PCA 的插值\\
+保留基线属性，追加残差 $\Psi$\\
+空残差 $\to$ 原始初始化}}
+\caption{\textbf{双模块的保留基线式先验准入。}(a) 保留原始高斯分支。(b) 反事实可靠性评估与锚定准入输出全局证据和逐点支持。(c) 残差初始化将这些证据映射为新增高斯属性。局部支持来自逐点自一致性及邻近基线结构，而非标量准入强度。两个模块均位于不变的训练流程之前。}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{模块一：反事实可靠性评估与锚定准入}
+\label{sec:admission}
+\label{sec:calibration}
+
+该模块回答\emph{场景是否支持学习型先验，以及支持体现在哪些位置}。它结合相对自一致性与跨来源锚定，而不将其中任何一种信号单独当作完整的正确性检验。
+
+\paragraph{反事实自一致性。}
+对每个 MVS 点，我们检查其在训练视图中的投影。几何一致性衡量投影深度与参考深度的吻合程度；外观一致性同时衡量不同视图采样颜色之间的一致性，以及这些颜色与点云所存颜色的一致性。可见性权重降低深度分歧较大投影的影响，而被更多视图支持的点获得更高的支持程度。
+
+单独观察一个较小的残差很难作出判断：其尺度依赖于场景，而无纹理区域即使使用错误对应，也可能表现出一致性。因此，我们在同一场景内部构造对照。在每个视图中，通过非零循环移位，把采样到的参考深度与颜色重新分配给其他点。这些错误对应保留现有观测，却打破了原有的点与观测关联。对于真实对应的残差 $e_i^+$ 和 $J$ 个错误对应残差 $e_{ij}^-$，比较方式为
+\begin{equation}
+q_i=\frac{1}{J}\sum_{j=1}^{J}
+\sigma\!\left(\frac{e_{ij}^- - e_i^+}{\beta}\right),
+\qquad
+\beta=\max\!\left(1.4826\,\MAD(\{e_{ij}^- - e_i^+\}),\varepsilon\right).
+\label{eq:calibration}
+\end{equation}
+Sigmoid 函数产生一个软胜出分数：当真实对应明显优于错误对应时，$q_i$ 趋近于一；当两者都不占优势时，$q_i$ 接近二分之一。稳健尺度 $\beta$ 针对每类比较，根据当前观测单独估计。只有高于中性值的正向超出部分才贡献证据。场景级自一致性 $\rself$ 要求几何与外观都优于这一参照；局部自一致性 $\ell_i$ 还考虑有效支持视图的数量。具体聚合方式见附录~\ref{app:details}。
+
+若存在兼容的缓存 MVS 深度图，则使用它们提供参考深度；否则，将点云划分为两个不相交的集合，每个点都与另一个集合生成的深度缓冲进行比较。后一种方式避免点直接与自身的投影进行比较，但两种后端都无法使参考深度与学习型重建在统计上独立。尤其是，缓存后端并不会追踪并排除每个点的生成视图。因此，我们将这些分数视为\emph{自一致性}，而非正确性的证明。
+
+\paragraph{跨来源锚定。}
+\label{sec:gate}
+
+自一致性无法区分所有合理表面与保持一致的错误表面。因此，在同一个模块内，我们要求基线点云 $\mathcal B$ 额外提供两个信号。
+
+\paragraph{基线是否包含表面结构？}
+局部邻域协方差可以反映基线点是沿表面分布，还是填充在体积内部。我们独立打乱点之间的 $x$、$y$、$z$ 坐标，并将所得点云的结构与原始结构进行比较。这些对照保留各坐标的边缘分布，同时破坏许多空间关系。超出对照的证据形成 $\rstruct$。当基线为随机点云时，这一点尤为重要：不能仅仅因为存在一些点，就把它们当作几何确认。
+
+\paragraph{学习型点云是否与该结构一致？}
+对每个采样的基线点，我们比较其到 $\mathcal M$ 的最近距离，以及到坐标打乱版本的 $\mathcal M$ 的最近距离。所得分数 $\ralign$ 衡量真实对齐是否优于场景内对照。距离方向是有意选择的：学习型点云应能够解释已有基线结构，但也可以在基线没有点的区域提出新的几何。
+
+\paragraph{自一致性增强证据，但不创造证据。}
+结构证据和对齐证据必须同时存在。给定 $V$ 个训练视图，当前实现中的门控为
+\begin{equation}
+p=\rstruct\,\ralign,\qquad
+\eta=1+V\rself,\qquad
+r_G=1-(1-p)^{V\eta}.
+\label{eq:gate}
+\end{equation}
+这是一个单调的证据组合规则，而不是根据独立视图推导出的似然。其核心性质很直接：只要任一锚定信号为零，无论 MVS 自一致性如何，均有 $r_G=0$。随后，通过另一个单调映射将 $r_G$ 转为准入强度 $A$，并保持零端点不变，详见附录~\ref{app:details}。
+
+\paragraph{局部支持与模块输出。}
+局部锚点支持与 $\ell_i$ 结合形成 $\ell'_i$，其计算独立于标量门控。靠近结构化基线区域的点，根据其距离相对于局部基线点间距的归一化值获得支持。远离基线时，自一致性仍可支持候选点，从而使残差扩展几何覆盖。因此，全局准入要求跨来源一致性，而局部影响分配不要求每个新增点都与已有点重合。该模块将 $\rself$、$r_G$、$A$ 和 $\{\ell'_i\}$ 传递给残差初始化器，本身不移动点，也不修改基线属性。
+
+\subsection{模块二：保留基线的残差初始化}
+\label{sec:instantiation}
+
+该模块回答\emph{获准接纳的几何应以多大强度影响初始表示}。给定模块一的证据，它或者返回空残差，或者构造属性随证据变化的新增高斯。
+
+\paragraph{保留基线，追加残差。}
+我们仅使用原始基线点云计算 $\PhiDG(\mathcal B)$，不在加入 MVS 点后重新计算其尺度。残差中心和颜色保留 MVS 的预测值。门控开启后，保留受资源预算约束的候选总体，并通过不透明度和形状控制其初始影响。仅减少点数并不等同于削弱先验：更大的最近邻距离可能产生更大的高斯投影。因此，准入强度 $A$ 控制的是影响，而非保留点数的百分比。
+
+\paragraph{不透明度控制初始影响。}
+令 $u_i=\rself+(1-\rself)\ell'_i$，$\bar u$ 为其在获准接纳的候选点上的均值。残差不透明度初始化为
+\begin{equation}
+o_i=\clip\!\left(A\,\frac{u_i}{\max(\bar u,\varepsilon)},0,1\right),
+\qquad
+\alpha_i=1-(1-\alpha_0)^{o_i},
+\qquad \alpha_0=0.1.
+\label{eq:opacity}
+\end{equation}
+该映射用 $o_i$ 缩放标准高斯的中心光学厚度。场景准入强度控制整体影响，局部支持则在不同点之间分配这一影响。该映射不是最终渲染误差的上界，中心光学厚度之和也不等于图像空间积分意义上的不透明度预算。所有不透明度参数仍然可以训练。
+
+\paragraph{形状控制几何假设强度。}
+我们从候选 MVS 点云估计局部 PCA 坐标系。令 $s^{\mathrm{PCA}}_{ik}$ 为第 $k$ 个主轴方向上的标准差，$d_i$ 为基线点与实际实例化残差点集合中的最近邻间距。初始尺度为
+\begin{equation}
+\log s_{ik}=(1-\zeta_i)\log d_i+
+\zeta_i\log s^{\mathrm{PCA}}_{ik},
+\qquad
+\zeta_i=(r_G\ell'_i)^2.
+\label{eq:shape}
+\end{equation}
+证据较弱时，高斯接近各向同性；证据较强时，其形状趋向局部 PCA 形状，旋转由 PCA 坐标系确定。这种插值表达了不同程度的几何假设，却不移动候选点中心、不冻结位置，也不添加几何损失。
+
+\paragraph{回退机制与适用范围。}
+对于候选容量 $N$，当 $r_G=0$ 或 $\lfloor AN\rfloor=0$ 时，实现不添加任何先验。后一个条件是与容量有关的离散激活条件，而非学习得到的质量阈值。在这种情况下，基线的全部初始属性得以恢复。存在残差后，除数值保护操作外，其属性随计算出的证据连续变化；但空残差与非空残差之间的离散决策本身并不连续。除此之外，训练使用原有优化器、光度目标、高斯丢弃、增密与剪枝策略。
+
+无论数据集标签是什么，非结构化基线预期只能提供较弱的锚定证据。这为在 Blender 上测试自动回退提供了动机，却不能保证每个随机样本都会回退。反之，具有结构且与先验对齐的基线几何，可以在任何数据集上接纳有用的学习型几何覆盖。可保证的仅是空残差时的初始化端点；相关误差、不完善的对照以及后续优化仍然可能导致负迁移。
+
+\section{实验}
+\label{sec:exp}
+
+我们将完整双模块初始化器与 DropGaussian 和直接 MVS 进行比较，再分别检验模块一的准入证据与模块二的属性映射。逐场景失败分析与端到端成本用于评估质量收益是否足以支持先验的使用。
+\PH{草稿状态：下列表格规定了最终评估方案，在获得协议一致的实验结果前保持待填。所提出的消融与诊断不作为已完成实验报告。}
+
+\subsection{实验协议}
+\label{sec:protocol}
+
+\paragraph{数据集与视图。}
+我们使用当前配置的 LLFF~\citep{mildenhall2019llff}、Mip-NeRF360~\citep{barron2022mipnerf360}、DTU~\citep{jensen2014large}和 Blender~\citep{mildenhall2020nerf}基准集合中的全部场景，共包含 38 个不同场景和 91 个“场景—视角设置”组合。使用全部场景并不意味着使用全部图像训练。表~\ref{tab:protocol}固定了图像数量与分辨率，附录~\ref{app:protocol}列出了场景和精确的选图规则。这些是代码仓库明确采用的协议，并不声称每一种设置都复现了原始 DropGaussian 论文的实验条件。
+
+\begin{table}[t]
+\caption{\textbf{评估范围。}每种方法在每个场景与视角设置下运行一次。分辨率设置以图像下采样倍数表示。}
+\label{tab:protocol}
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrl@{}}
+\toprule
+数据集 & 场景数 & 训练视图数 & 下采样 & 测试视图选择\\
+\midrule
+LLFF & 8 & 3 / 6 / 9 & $8\times$ & 每八张图像取一张\\
+Mip-NeRF360 & 7 & 12 / 24 & $8\times$ & 每八张图像取一张\\
+DTU & 15 & 3 / 6 / 9 & $4\times$ & 固定 25 视图，IDR 掩码\\
+Blender & 8 & 8 & $1\times$ & 每八张测试图像取一张\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{配对输入与训练。}
+DropGaussian 与 \ours{} 使用相同的训练/测试划分、分辨率、背景、基线点云，以及 10,000 次迭代的训练计划。LLFF 和 Mip-NeRF360 加载配置好的传统稠密重建；若缺失，则由加载器回退到稀疏重建。DTU 使用配置好的稀疏重建。Blender 的两次配对运行均使用相同的 10,000 点随机基线和白色背景。我们记录一个固定随机状态以复现配对，但不进行多随机种子重复实验，也不报告跨种子标准差或显著性结论。
+
+直接 MVS 与 \ours{} 的 MVS 候选点上限均为 100,000。这里对齐的是候选预算，而非初始高斯总数，因为 \ours{} 还保留基线高斯。因此，需要报告实际初始与最终点数。所有准入常量在各数据集间共享。配对比较只改变初始化，损失保持为 $\mathcal L_1+0.2(1-\mathrm{SSIM})$，其余 DropGaussian 训练设置不变。
+
+\paragraph{几何数据来源。}
+可靠性估计只读取选定的训练相机与图像，但这本身并不能证明预计算点云在生成时也只使用了这些图像。纳入结果前，需要核验生成学习型缓存和基线几何时使用的图像列表；来源不明的情况必须核实，或明确披露为不同协议。基线点云哈希相同只能证明配对输入一致，不能证明不存在留出图像信息泄漏。缓存缺失导致的回退，应与可靠性驱动的拒绝分别报告，不能作为成功评估先验可靠性的证据。
+
+\paragraph{指标与汇总。}
+我们报告 PSNR、SSIM 和 VGG-LPIPS~\citep{wang2004ssim,zhang2018lpips}。每个场景的指标在其测试视图上取平均，每个设置再对场景进行等权平均。在 DTU 上，PSNR 使用以前景区域归一化的掩码误差；SSIM 与 LPIPS 在 IDR 掩码之外合成白色背景后计算。其他数据集采用全图评估。全部 91 个“场景—设置”组合分别列出，而不是合并为一个隐含地给予多视角设置数据集更大权重的平均值。除数据集均值外，还报告逐场景变化和最严重的性能下降。负向变化应保留，不应被默默归类为持平。
+
+\subsection{主要对比与负迁移}
+\label{sec:main-results}
+
+主要对比为全部九种设置中的配对 DropGaussian 与 \ours{}（表~\ref{tab:main}）。为区分学习型几何的收益与准入机制的收益，我们还评估\emph{直接 MVS}：以相同上限的 MVS 候选点云替换基线点云，采用标准高斯初始化，不使用自适应可靠性或自适应属性。该对比覆盖每个数据集最稀疏设置下的全部 38 个场景（表~\ref{tab:mvs}）。它是一种实际替代方案，而非单独针对门控的消融，因为它同时移除了基线点云。
+
+\begin{table}[t]
+\caption{\textbf{主要配对比较。}各项为 PSNR$\,\uparrow$/SSIM$\,\uparrow$/LPIPS$\,\downarrow$，对每个场景单次运行的结果取平均。$\Delta$PSNR 表示 \ours{} 减去 DropGaussian。TBD 表示尚未测量或尚未核验，而非零值。}
+\label{tab:main}
+\centering\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}lrccc@{}}
+\toprule
+数据集 & 视图数 & DropGaussian & \ours{} & $\Delta$PSNR\\
+\midrule
+LLFF & 3 & \triplet & \triplet & \pending\\
+ & 6 & \triplet & \triplet & \pending\\
+ & 9 & \triplet & \triplet & \pending\\
+Mip-NeRF360 & 12 & \triplet & \triplet & \pending\\
+ & 24 & \triplet & \triplet & \pending\\
+DTU & 3 & \triplet & \triplet & \pending\\
+ & 6 & \triplet & \triplet & \pending\\
+ & 9 & \triplet & \triplet & \pending\\
+Blender & 8 & \triplet & \triplet & \pending\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\caption{\textbf{准入机制是否优于直接使用 MVS？}包含各设置下的全部场景，指标依次为 PSNR、SSIM 和 LPIPS。首行与末行复用主实验结果。直接 MVS 替换基线，而非在基线上增补。}
+\label{tab:mvs}
+\centering\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+初始化方式 & LLFF-3 & Mip-12 & DTU-3 & Blender-8\\
+\midrule
+DropGaussian & \triplet & \triplet & \triplet & \triplet\\
+直接 MVS & \triplet & \triplet & \triplet & \triplet\\
+\ours{} & \triplet & \triplet & \triplet & \triplet\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Blender 与场景级安全性。}
+对每个 Blender 场景，我们将同时报告图像质量变化与实际准入结果：锚点结构、空间对齐、自一致性、门控值以及追加点数。门控关闭时，需要核对其与基线初始化属性是否一致；最终指标相同必须来自实际观测，不能仅由初始化端点推断。门控开启及任何质量下降也都必须报告。这样可以区分数据驱动的拒绝与数据集特定的绕过逻辑，并防止平均分数掩盖负迁移。相同诊断也适用于另外三个真实场景基准。
+
+\paragraph{与其他方法的比较。}
+FastGS、StereoGS 和其他稀疏视角方法可以提供外部参考，但只有视图、分辨率、掩码、初始化输入和训练预算均经核验一致的运行结果，才应纳入受控排名。协议不同的已发表或历史结果应放在单独标注的参考表中，不混入配对差值。早期开发结果同样不能替代最终配对实验。
+
+\paragraph{定性证据。}
+计划中的可视化将在各数据集的留出视图上，对比 DropGaussian、直接 MVS、\ours{} 和真实图像，并使用一致的裁剪区域与误差图尺度。示例包括正向收益案例、低准入或回退案例，以及观测到的最大性能下降案例（若存在）。按可靠性着色的初始点云可帮助解释渲染变化与接纳几何之间的联系。在获得测量结果前，不将任何案例标为成功恢复或成功拒绝。
+
+\subsection{双模块消融与可靠性诊断}
+\label{sec:ablations}
+
+三项针对性干预用于检验两个模块：一项移除模块一中的跨来源锚定，另两项分别检验模块二中的不透明度和形状。它们覆盖相同的 38 个低视图数场景，复用候选点云与基线属性，并保持训练流程不变。分别干预两种属性，可以区分初始影响分配与几何假设强度的作用。这些是明确规定的待做实验，并不意味着相关运行脚本已经存在。
+
+\begin{table}[t]
+\caption{\textbf{按模块组织的核心消融。}M1/M2 表示被修改的模块，而非移除整个模块。每一行仅改变所述机制。此处报告 PSNR，补充材料中报告全部三项指标、点数和逐场景变化。}
+\label{tab:ablation}
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+变体 & LLFF-3 & Mip-12 & DTU-3 & Blender-8\\
+\midrule
+M1：仅自一致性准入 & \pending & \pending & \pending & \pending\\
+M2：标准残差不透明度 & \pending & \pending & \pending & \pending\\
+M2：各向同性残差形状 & \pending & \pending & \pending & \pending\\
+\ours{}（完整方法，复用） & \pending & \pending & \pending & \pending\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{模块一：跨来源准入。}
+通过设置 $r_G=A=\rself$ 和 $\ell'_i=\ell_i$ 移除基线证据，同时保留基线高斯与残差属性映射。该实验检验仅依赖学习型先验的自一致性，是否足以决定准入。接纳点数的变化属于被检验机制的一部分，应被记录而非隐藏。
+
+\paragraph{模块二：不透明度分配。}
+保留完整方法的准入、点选择与形状，但将每个获准接纳的残差都初始化为标准不透明度 $\alpha_0=0.1$。该实验检验通过式~\eqref{eq:opacity}削弱并分配先验影响的价值，不改变基线不透明度。如果主要比较表明有进一步分析的必要，还可以采用均匀光学厚度权重变体 $o_i=A$，区分场景级削弱与局部分配的作用。
+
+\paragraph{模块二：形状插值。}
+设置 $\zeta_i=0$，同时保留位置、颜色、准入、不透明度以及相同的间距 $d_i$。该实验检验可靠性条件化的各向异性，是否在增加点数之外提供额外收益。这里并不以基线的三近邻尺度规则替代残差使用的最近邻间距。
+
+\paragraph{容量控制。}
+直接 MVS 和基线的总点数均可能与 \ours{} 不同。为检查收益是否仅来自额外容量，需要单独设置一个对照：向保持不变的基线追加完全相同的候选点，使用标准不透明度和各向同性残差尺度。在完整方法门控开启的场景中，该对照与 \ours{} 具有相同的初始点数；门控关闭的场景则单独报告。现有的“合并点云后重新初始化”选项并非等价对照，因为它可能重新计算基线尺度。该控制实验需要专门实现，不能假定已经具备。
+
+\paragraph{模块一诊断：证据是否响应可靠性变化？}
+我们将结合留出视图的渲染变化，检查原始残差和校准分数，但不将测试集作为准入输入。受控压力测试将在保持相机、基线和候选数量不变的情况下，通过归一化坐标噪声、整体一致的几何位移与颜色错配来劣化先验。在查看测试结果前，必须固定扰动强度及缓存一致性处理策略。我们将报告 $r_G$、$A$ 和最终质量是否作出合理响应；单调变化只是待验证假设，并非保证。对点云与相机施加相同旋转，还可以检验坐标系敏感性，但这不意味着在方法中加入随机旋转。
+
+若具备 DTU 参考几何以及正确的坐标对齐，可按可靠性分位组绘制点到表面的误差。真实几何只用于这一离线诊断，不用于决定准入。使用连续误差统计，可避免人为引入几何正确性的阈值。这项可选分析不需要代价较高的最优准入强度穷举实验。
+
+\subsection{收敛与计算成本}
+\label{sec:efficiency}
+
+我们在 500、1,000、2,000、4,000、7,000 和 10,000 次迭代时比较质量。对每个场景，以该场景配对 DropGaussian 在 10,000 次迭代时的 PSNR 作为目标，评估达到相同质量的效率。报告首次达到该目标的评估检查点；若始终未达到，则记为\emph{未达到}，而不是外推一个迭代数。该目标仅用于事后报告，不控制训练或门控选择。
+
+中间与最终分数必须使用相同评估协议。特别地，当前 DTU 在线曲线使用全图 PSNR，而最终基准使用前景掩码。因此，在中间渲染结果通过相同掩码评估器评估之前，DTU 达到目标质量的结果保持待定。对其他数据集，曲线终点仍使用同一个在线评估器，而不与保存图像量化后的指标混用。
+
+\begin{table}[t]
+\caption{\textbf{效率报告模板。}在同一 GPU 上，对每个低视图数数据集设置重复该比较。报告初始/最终高斯数、包含 MVS 预处理的完整运行实际耗时、峰值已分配显存和达到目标的检查点。TBD 项需实测；未达到目标时明确标注。}
+\label{tab:efficiency}
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+方法 & 初始/最终点数 & 总耗时 & 峰值显存 & 目标迭代数\\
+\midrule
+DropGaussian & \pending & \pending & \pending & \pending\\
+直接 MVS & \pending & \pending & \pending & \pending\\
+\ours{} & \pending & \pending & \pending & \pending\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+实际耗时应拆分为离线 MVS 预测、初始化与可靠性处理，以及优化过程，并明确说明评估开销。现有训练计时器已经包含场景初始化，因此不能重复计入该部分。我们分别报告使用缓存先验时的耗时和端到端耗时，不将迭代数减少直接等同于实际耗时加速。门控关闭可以避免额外可训练高斯，但仍有先验加载与评估成本，也可能包含 MVS 预测成本。峰值显存和最终模型规模需与质量一起报告，完成后的表格还必须说明 GPU 型号与计时边界。
+
+\section{局限性与结论}
+\label{sec:conclusion}
+
+\ours{} 将先验使用划分为两个模块。反事实可靠性评估与锚定准入判断学习型几何得到哪些场景级和局部支持；保留基线的残差初始化将这些证据转换为初始不透明度和形状受控的新增高斯。这一从证据到初始化的接口保持 DropGaussian 训练流程不变，并在未接纳残差时恢复其初始化。
+
+当基线缺乏有用结构时，该机制比较保守，可能拒绝正确先验。坐标打乱对照依赖坐标轴方向，例如轴对齐平面在打乱后仍可能保持平面结构。不同来源的误差也可能彼此一致，缓存深度还可能包含自我确认的观测。最后，较弱的初始不透明度不能保证正确点之后仍能恢复：不透明度通过 Sigmoid 参数化进行优化，光栅化与剪枝可能抑制弱基元。这些局限排除了普遍旋转不变性、误差独立性保证，以及训练后性能绝不下降的保证。本文提出的比较与诊断，旨在测量当前初始化方法的实际收益与失效边界。
+
+\subsection*{AI 使用声明}
+生成式 AI 辅助了论文编辑以及代码与论文的一致性检查。
+\PH{提交前，作者必须按照会议要求补充其他 AI 使用情况的披露，审阅最终文本、参考文献、实现描述和结果，并确认对提交内容负责。}
+
+\subsection*{可复现性声明}
+附录~\ref{app:details}记录了已实现的映射与数值设置。附录~\ref{app:protocol}规定场景范围与评估方式，附录~\ref{app:execution}区分现有实验入口与拟新增对照。最终发布内容必须包含确切代码版本、输入来源、逐场景指标以及运行环境。\PH{最终实验产物和匿名代码发布信息仍待补充。}
+
+\bibliography{references}
+\bibliographystyle{iclr2027_conference}
+
+\clearpage
+\appendix
+\section{实现细节}
+\label{app:details}
+
+本附录沿用相同的双模块结构，补充正文省略的聚合与初始化细节，描述当前实现，而非其他备选设计。
+
+\subsection{模块一：证据估计与准入}
+\label{app:admission}
+
+\paragraph{自一致性聚合。}
+几何残差为有效视图中绝对对数深度差的中位数。外观残差为可见性加权的跨视图颜色离散程度与可见性加权的点颜色偏差两者的均值。可见性权重随绝对对数深度分歧呈指数衰减，其尺度为分歧中位数加上 $1.4826$ 倍的中位数绝对偏差（MAD）。若一个点在 $V$ 个视图中具有 $v_i$ 个有效视图，则其支持度为 $w_i=\clip((v_i-1)/\max(V-1,1),0,1)$。没有有效支持的比较返回中性分数 $1/2$。
+
+令 $q_i^g,q_i^a$ 为式~\eqref{eq:calibration}的两个输出，$\bar q^g,\bar q^a$ 为按支持度加权的均值，并令 $E_\kappa(q)=[\max(2q-1,0)]^\kappa$，则
+\begin{equation}
+\rself=\sqrt{E_2(\bar q^g)E_2(\bar q^a)},\qquad
+\ell_i=w_i E_1\!\left(
+\sigma\!\left(\frac{\logit q_i^g+\logit q_i^a}{2}\right)\right).
+\label{eq:local}
+\end{equation}
+这一中性边界表达的是相对于构造对照的比较，并非已针对相关场景点证明成立的随机水平零假设分布。
+
+\paragraph{锚定证据。}
+对局部协方差特征值 $\lambda_1\le\lambda_2\le\lambda_3$，结构统计量为 $1-3\lambda_1/(\lambda_1+\lambda_2+\lambda_3)$，并为分母设置数值下限。对于每个坐标打乱后的基线点云，以“一减该统计量”作为误差，使用式~\eqref{eq:calibration}与原始点云比较。对每次对照的平均胜出分数施加 $E_2$，再对各次结果取几何平均，得到 $\rstruct$。空间对齐则使用基线到先验的最近邻距离，以坐标打乱后的先验作为对照，并对平均胜出分数施加 $E_1$。两种置换均在现有坐标系内进行，不执行随机坐标系旋转。
+
+\paragraph{准入与局部支持。}
+在式~\eqref{eq:gate}之后，实现中的准入映射为
+\begin{equation}
+A=1-\left(1-\min\left\{1,
+\frac{r_G}{\max(1-\rself,\varepsilon)}\right\}\right)^\eta.
+\label{eq:admission}
+\end{equation}
+对一个先验点，令 $\delta_i$ 为其到最近基线点的距离除以该基线点的最近邻间距。局部锚点支持为 $a_i=\rstruct\exp(-\delta_i^2/2)$，最终局部分数为 $\ell'_i=1-(1-\ell_i)(1-a_i)$。若基线点过少，无法进行这一计算，则局部只使用自一致性，场景门控仍然生效。
+
+\paragraph{证据估计设置。}
+我们使用三个反事实对照，每个结构邻域最多包含九个点，图像网格最长边为 256 像素，并最多选取 50,000 个按索引均匀分布的基线查询点计算结构与对齐。坐标置换使用独立的确定性随机生成器。这些设置控制计算规模与数值行为，而非数据集特定的接受阈值。
+
+\subsection{模块二：残差构造与回退}
+\label{app:initialization}
+
+\paragraph{容量与数值设置。}
+标准自适应场景加载器将候选总体限制在残差容量以内，默认上限为 100,000 点。因此，门控开启后保留这一总体，而不是只采样其中的 $A$ 比例。残差 PCA 的每个协方差邻域最多包含九个点。
+
+PCA 标准差为局部特征值的平方根，特征值下限为机器精度乘以 $d_i^2$。合法旋转矩阵转换为单位四元数。初始化器设置尺度下限，并在进行逆 Sigmoid 参数化之前，将残差不透明度截断到远离零和一的范围。基线保留原有三近邻尺度规则、各向同性初始化时的旋转、颜色初始化和 $0.1$ 的不透明度；式~\eqref{eq:shape}中的残差间距则由单独的一近邻计算得到。
+
+\paragraph{零端点能证明什么。}
+若未返回残差，基线属性通过原有路径构造，估计器独立的随机生成器也不会消耗训练随机数流。这支持直接检验初始化层面的相等性。最终 GPU 训练轨迹是否相同，还取决于确定性执行条件，不能作为普遍定理断言。本文不使用旋转不变性命题、有限样本校准保证或训练后渲染质量的界限。
+
+\section{详细评估协议}
+\label{app:protocol}
+
+\paragraph{场景范围。}
+LLFF：fern、flower、fortress、horns、leaves、orchids、room、trex。
+
+Mip-NeRF360：bicycle、bonsai、counter、garden、kitchen、room、stump。
+
+DTU：scan8、scan21、scan30、scan31、scan34、scan38、scan40、scan41、scan45、scan55、scan63、scan82、scan103、scan110、scan114。
+
+Blender：chair、drums、ficus、hotdog、lego、materials、mic、ship。
+
+\paragraph{图像选择。}
+LLFF 与 Mip-NeRF360 按图像名称对相机排序，将索引可被八整除的图像留作测试，再从剩余相机中选择所需数量、索引近似等间距的训练视图。DTU 使用从零开始编号的有序训练列表 $(25,22,28,40,44,48,0,8,13)$ 的前 3/6/9 项，测试索引为
+\begin{quote}\small
+1, 2, 9, 10, 11, 12, 14, 15, 23, 24, 26, 27, 29, 30, 31, 32, 33, 34, 35, 41, 42, 43, 45, 46, 47。
+\end{quote}
+Blender 使用训练帧索引 $(2,16,26,55,73,76,86,93)$，并在给定测试序列中选择索引可被八整除的图像。按照配置的完整分辨率，标准图像尺寸为 $800\times800$。与外部结果比较时，必须同时说明这些约定。
+
+\paragraph{运行身份与证据。}
+对每次配对运行，保留代码版本、参数、相机名称、基线点云哈希、MVS 来源与生成图像列表、候选上限、实际点数及指标文件。未经源图像核验的既有缓存，不能直接声称仅使用了训练图像。两种方法必须使用相同基线资产；改变其重建协议属于另一项实验。应报告资产缺失、运行失败、掩码缺失和缓存缺失回退，而不是从平均值中删除相关场景。
+
+\paragraph{场景级结果。}
+对全部 91 个“场景—设置”组合，最终补充材料将列出配对 PSNR、SSIM、LPIPS、带符号差值、锚点结构、空间对齐、自一致性、门控值、准入强度与回退原因。报告最严重的 PSNR 变化和全部负迁移案例，同时给出 SSIM 与 LPIPS 的变化。如果采用应用特定的容忍范围，应预先声明，并仍然提供原始数值。每个设置运行一次只能支持描述性比较，不能估计训练波动。
+
+\section{实验范围与待完成工作}
+\label{app:execution}
+
+这份工作稿清单用于避免将计划收集的证据误认为已完成结果。
+
+\begin{table}[ht]
+\caption{\textbf{核心实验清单。}次数表示计划训练次数，而非已完成次数。模块一的一项干预和模块二的两项干预使用每个数据集最低配置视图数下的全部场景，已有基线与完整方法的运行结果用于复用比较。}
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrl@{}}
+\toprule
+实验 & 运行次数 & 实现状态\\
+\midrule
+DropGaussian + \ours{}，全部 91 个组合 & 182 & 已有配对流程\\
+直接 MVS，全部 38 个低视图数场景 & 38 & 已有各数据集脚本\\
+M1/M2 核心消融，$3\times38$ & 114 & 需实现专门干预\\
+\midrule
+核心实验合计 & 334 & 每个配置运行一次\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+配对实验入口为 \path{scripts/all/run_all.sh}。直接 MVS 脚本位于 \path{scripts/mvs/}，默认覆盖 LLFF-3、DTU-3、Mip-NeRF360-12 和 Blender-8。配对流程不会自动执行直接 MVS 或所提出的组件消融。
+
+容量匹配的残差追加、先验劣化压力测试和均匀光学厚度权重属于额外对照，不计入 334 次核心运行。仅涉及初始化的诊断不需要完整重新训练；检验劣化先验下的渲染稳健性则需要新增训练，必须单独计入预算。基于 DTU 参考几何的分位分析需要对齐的真实几何资产。实际耗时意义上的达到目标质量，需要当前收敛 JSON 尚未提供的检查点时间戳；DTU 掩码收敛分析需要中间阶段的掩码评估。这些属于测量任务，而非当前算法额外声称的贡献。
+
+最终报告应优先包含完整配对比较、直接 MVS、三项核心消融、逐场景失败分析、定性裁剪图，以及如实报告的端到端成本。最终摘要和结论应由实验结果决定，不能以对门控预期行为的假设替换占位结果。
+\end{document}

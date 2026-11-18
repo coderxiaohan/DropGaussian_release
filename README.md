@@ -40,23 +40,49 @@ opacity = opacity * compensation[:, None]
 ```
 ## ✅ Full implementation
 
-## Direct MVS + VCD/VCP research branch
+## Geometry-complementary initialization + density control
 
-The current branch, `exp/mvs-vcd-vcp`, keeps two additions to DropGaussian:
-**direct MVS initialization** and the existing **FastGS-inspired VCD/VCP
-density controller**. It is a research fork, not the official FastGS
-implementation. DropGaussian dropout, the photometric objective, learning rates,
-camera splits, and the densification event schedule are unchanged.
+The current working implementation on `exp/mvs-vcd-vcp` has two modules:
+**geometry-complementary MVS initialization** and **multi-view density
+control** (EGD/TBP; the existing CLI names remain `vcd`/`vcp`). The density
+controller is adapted from FastGS ideas, not an exact upstream reproduction.
+DropGaussian dropout, the photometric objective, learning rates, camera splits,
+and the densification event schedule are unchanged.
+
+The main entry points are `scripts/mvs_complement/train_<dataset>.sh`.
+`scripts/mvs_vcd_vcp/` is the direct-MVS comparison, not the main initialization
+method. TPS/TWINGS geometry correction and OAS surface-covariance experiments,
+their CLI options, and their dedicated scripts/tests have been removed.
 
 Adaptive MVS reliability scoring, counterfactual calibration, anchor-based
 admission, baseline-preserving residual fusion, and confidence-dependent
-Gaussian attributes have been removed from this branch. Old paper/report files
-describe the earlier adaptive branch and are historical material, not the method
-implemented here. The previous working state is preserved in Git stash
+Gaussian attributes are not part of this branch. The historical
+`docs/research/mvsdrop_report.md` describes an earlier adaptive method, not the
+current implementation. The earlier adaptive working state was preserved in Git stash
 `0f821ef35ee65c3953462a62104dfd7af4255c63`; do not apply it on top of this branch
 unless you intend to restore the adaptive implementation.
 
-### Initialization: direct MVS only
+### Main initialization: preserve geometry, fill coverage gaps
+
+With `--mvs_complement_mode coverage`, the initializer retains reconstructed
+baseline geometry and adds MVS candidates supported by at least two training
+views, prioritizing regions not covered by that geometry. Positions and colors
+are not warped; ordinary Gaussian scale, rotation, and opacity initialization
+is retained. Random or unknown-source base clouds are not treated as reliable
+reconstructions: when no reconstructed base exists, initialization falls back
+to direct MVS, **not** to baseline random points. Missing MVS caches remain
+errors, not silent fallbacks.
+
+The default `MVS_COMPLEMENT_TOTAL_POINTS=0` keeps every base point and adds up
+to `MVS_COMPLEMENT_MAX_POINTS=100000` MVS points. A positive total budget can
+subsample the base cloud; use equal positive budgets when testing whether gains
+come from selection rather than point count. `concat` and `balanced` remain as
+initialization ablations, and `none` selects the direct-MVS comparison.
+`coverage` and `balanced` require compatible depth caches. Reused baseline
+geometry assets have not been independently audited for training-view-only
+provenance.
+
+### Comparison initialization: direct MVS
 
 For a fresh MVS run, `Scene` loads the cached MVS point cloud and **replaces**
 the original initialization point cloud. All datasets, including Blender, use
@@ -86,19 +112,19 @@ caches. Historical caches without camera metadata are still accepted, with
 comparison. Nonfinite points are removed. No additional reliability filtering
 is applied to the valid cache points.
 
-### Density control: VCD and VCP
+### Density control: EGD and TBP (`vcd` / `vcp` in code)
 
 This is the project's independent adaptation of
 [FastGS](https://github.com/fastgs/FastGS) and its
 [sparse-view implementation](https://github.com/fastgs/FastGS/tree/fast-dropgaussian),
 **not an exact reproduction** of their CUDA scoring rules.
 
-- **VCD:** keep the original gradient/size criterion for clone/split, but also
+- **EGD / `vcd`:** keep the original gradient/size criterion for clone/split, but also
   require support in high-error regions of at least two distinct training
   views. A Gaussian's compositing mass must be more concentrated in the
   high-error mask than the image-wide mask area. This identifies refinement
   opportunities; it does not prove that every proposed split will improve PSNR.
-- **VCP:** propose points with low contribution in every observed training
+- **TBP / `vcp`:** propose points with low contribution in every observed training
   view, requiring at least two observations; usefulness in any view vetoes a
   proposal. Remove the candidate batch in a read-only render proxy, then accept
   only if the current `L1 + lambda_dssim * (1 - SSIM)` loss does not increase
@@ -124,17 +150,21 @@ Use the `DropGaussian` environment. GPU IDs below are examples, not a claim
 about free devices:
 
 ```bash
-N_VIEWS=3 GPU_ID=0 bash scripts/mvs_vcd_vcp/train_llff.sh
-N_VIEWS=3 GPU_ID=1 bash scripts/mvs_vcd_vcp/train_dtu.sh
-N_VIEWS=12 GPU_ID=2 bash scripts/mvs_vcd_vcp/train_mipnerf360.sh
-N_VIEWS=8 GPU_ID=3 bash scripts/mvs_vcd_vcp/train_blender.sh
+N_VIEWS=3 GPU_ID=0 bash scripts/mvs_complement/train_llff.sh
+N_VIEWS=3 GPU_ID=1 bash scripts/mvs_complement/train_dtu.sh
+N_VIEWS=12 GPU_ID=2 bash scripts/mvs_complement/train_mipnerf360.sh
+N_VIEWS=8 GPU_ID=3 bash scripts/mvs_complement/train_blender.sh
 ```
 
 Each command runs all configured scenes once, then renders and summarizes;
 DTU uses foreground-mask evaluation. Outputs default to
-`output/mvs_vcd_vcp/<dataset><views>/<scene>/`.
+`output/mvs_complement/coverage/keep_base/<dataset><views>/<scene>/`.
+Changing the complement mode or total budget changes the intermediate output
+directories. Existing nonempty main-method settings are rejected; use a fresh
+`OUTPUT_ROOT` for another experiment. To run the direct-MVS comparison, use the
+corresponding `scripts/mvs_vcd_vcp/` command instead.
 
-| Dataset | Configured scenes | Evaluation view counts | Downsampling | Iterations |
+| Dataset | Configured scenes | Training view counts | Downsampling | Iterations |
 | --- | ---: | --- | ---: | ---: |
 | LLFF | 8 | 3 / 6 / 9 | 8 | 10,000 |
 | DTU | 15 | 3 / 6 / 9 | 4 | 10,000 |
@@ -151,7 +181,7 @@ Preview all nine settings (91 scene-setting runs, one method):
 
 ```bash
 GPU_LLFF=0 GPU_DTU=1 GPU_MIPNERF360=2 GPU_BLENDER=3 \
-  bash scripts/mvs_vcd_vcp/train_all_views.sh --dry-run
+  bash scripts/mvs_complement/train_all_views.sh --dry-run
 ```
 
 Remove `--dry-run` to execute **sequentially**. GPU priority is
@@ -167,6 +197,13 @@ Baseline and module-disable switches remain only as experimental controls;
 there is no adaptive MVS implementation to enable.
 
 ```bash
+# Main initializer, selection and point-budget controls
+MVS_COMPLEMENT_MODE=concat bash scripts/mvs_complement/train_llff.sh
+MVS_COMPLEMENT_MODE=balanced bash scripts/mvs_complement/train_llff.sh
+MVS_COMPLEMENT_TOTAL_POINTS=100000 bash scripts/mvs_complement/train_llff.sh
+# Direct MVS comparison at the same positive point budget
+MVS_COMPLEMENT_MODE=none MVS_COMPLEMENT_TOTAL_POINTS=100000 \
+  bash scripts/mvs_complement/train_llff.sh
 # Direct MVS, original density control
 DENSITY_CONTROL=none bash scripts/mvs_vcd_vcp/train_llff.sh
 # Direct MVS + one density module
@@ -253,7 +290,7 @@ You can download them via the link below:
 
 ### 🧪 Training
 
-The direct-MVS + VCD/VCP commands and all-view matrix above are the recommended
+The geometry-complementary commands and all-view matrix above are the recommended
 entries for this branch. Original `scripts/train_<dataset>.sh` commands are
 baseline controls and explicitly disable the two density modules. The original
 COLMAP preprocessing below is still relevant to baseline assets and camera

@@ -1,0 +1,454 @@
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage{iclr2027_conference,times}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{xcolor}
+\usepackage{hyperref}
+\usepackage{url}
+
+\newcommand{\ours}{CAPA}
+\newcommand{\PH}[1]{\textcolor{red}{#1}}
+\newcommand{\pending}{\PH{\textnormal{TBD}}}
+\newcommand{\triplet}{\pending}
+\newcommand{\rself}{r_{\mathrm{self}}}
+\newcommand{\rstruct}{r_{\mathrm{struct}}}
+\newcommand{\ralign}{r_{\mathrm{align}}}
+\newcommand{\PhiDG}{\Phi_{\mathrm{DG}}}
+\DeclareMathOperator{\clip}{clip}
+\DeclareMathOperator{\MAD}{MAD}
+\DeclareMathOperator{\logit}{logit}
+
+\title{Trust, but Verify: Counterfactual-Anchored\\
+Admission of Learned MVS Priors\\
+for Sparse-View Gaussian Splatting}
+\author{Anonymous authors\\Paper under double-blind review}
+% \iclrfinalcopy
+% Working draft: TBD denotes an unfilled measurement, never a zero result.
+% Method describes the current implementation. Planned experimental
+% interventions are explicitly distinguished from implemented entry points.
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Dense geometry from learned multi-view stereo (MVS) can improve sparse-view 3D Gaussian Splatting initialization, but an inaccurate prior can also undermine an effective reconstruction. We present \ours{}, a baseline-preserving initializer for DropGaussian with two complementary modules. The first, \emph{counterfactual reliability and anchored admission}, compares geometric and appearance consistency with mismatched observations from the same scene, then requires baseline structure and spatial alignment to support admission. MVS self-consistency may strengthen this support but cannot create it. The second, \emph{baseline-preserving residual initialization}, converts the resulting evidence into the opacity and shape of additional Gaussians, retaining the original Gaussian attributes and training procedure. Together, the modules separate deciding whether a prior is supported from controlling its initial influence, without dataset-specific residual cutoffs. If no residual is admitted, the initialization recovers the baseline; this is not a guarantee of non-decreasing final rendering quality. We define evaluation over four datasets and nine sparse-view settings to assess reconstruction quality, negative transfer, both modules, and end-to-end cost.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:intro}
+
+3D Gaussian Splatting (3DGS)~\citep{kerbl20233d} represents a scene with explicit, trainable Gaussian primitives. Sparse input views leave much of the geometry weakly constrained, making novel-view synthesis sensitive to both initialization and optimization. DropGaussian~\citep{park2025dropgaussian} addresses this problem through stochastic Gaussian dropping: temporarily removing primitives changes visibility and lets otherwise occluded primitives receive training signals. This regularization improves how a representation is optimized, but does not directly supply reliable geometry for regions poorly covered by the initial reconstruction.
+
+Learned multi-view stereo offers a complementary source of geometry. Networks such as MVSAnywhere~\citep{izquierdo2025mvsanywhere} can provide dense point clouds from the available views, including regions that a classical reconstruction misses. However, density is not the same as accuracy. A learned prior may contain misplaced surfaces, and errors shared across depth predictions can remain self-consistent. Replacing the baseline point cloud therefore risks exchanging a useful initialization for a dense but misleading one. Equally, accepting every prior point can introduce occlusion and geometric bias. The central question is not simply whether to use MVS, but \emph{how much influence its geometry should receive in a particular scene}.
+
+We formulate this choice as \emph{prior admission}. The baseline reconstruction is retained, and learned geometry is treated as a candidate residual rather than a replacement. Our method, \ours{} (\textbf{C}ounterfactual-\textbf{A}nchored \textbf{P}rior \textbf{A}dmission), consists of two modules. \emph{Counterfactual reliability and anchored admission} determines whether the scene supports the prior: actual point--view correspondences are compared with mismatches, and baseline structure and alignment provide the grounds for admission. \emph{Baseline-preserving residual initialization} turns that evidence into additional Gaussians with reliability-conditioned opacity and shape. The original initialization bypasses these modifications and is retained alongside the admitted residual.
+
+This design separates two decisions that are easily conflated: \emph{whether the scene provides grounds for using the prior}, and \emph{how strongly each admitted point should influence rendering}. It also preserves a concrete fallback: when admission produces no residual points, the baseline initialization is unchanged. No dataset name enters the reliability calculation. The same rule is applied to structured reconstructions and random initial clouds, although its success in rejecting harmful priors must be established empirically.
+
+Our contributions are:
+\begin{itemize}
+\item A \textbf{counterfactual reliability and anchored admission module} that combines within-scene comparison with an asymmetric cross-source gate. Baseline structure and alignment are required; learned self-consistency can amplify, but cannot replace, this support.
+\item A \textbf{baseline-preserving residual initialization module} that translates admission and local support into opacity and geometric commitment. It retains the original Gaussian attributes and the empty-residual fallback without changing DropGaussian's losses, dropping rule, or density control.
+\end{itemize}
+The experiments test these two modules through direct MVS initialization, targeted component ablations, failure cases, and the cost of obtaining the prior. They do not presume that admission is always beneficial.
+
+\section{Related Work}
+\label{sec:related}
+
+\paragraph{Sparse-view Gaussian reconstruction.}
+Sparse-view methods supplement the image evidence with geometric priors or regularize the reconstruction process. Depth-guided methods include DNGaussian~\citep{li2024dngaussian} and FSGS~\citep{zhu2024fsgs}, while CoR-GS~\citep{zhang2024corgs} and DropGaussian~\citep{park2025dropgaussian} regularize Gaussian optimization. Our focus is narrower: we retain the DropGaussian training procedure and change only how an additional learned point cloud enters its initialization. Gaussian positions and density remain trainable, so we do not assume that optimization is restricted to the spatial support of the initial points.
+
+\paragraph{Geometric priors and reliability.}
+Classical SfM and MVS~\citep{schoenberger2016sfm,schoenberger2016mvs} and learned MVS~\citep{izquierdo2025mvsanywhere} provide different sources of initial geometry. Our goal is not to improve the MVS network itself, but to control the influence of its output. The comparison with deliberately mismatched observations is inspired by within-sample randomization~\citep{good2005permutation}; here it produces an operational reliability score, not a calibrated probability of geometric correctness or a formal significance test. Cross-source agreement adds evidence beyond learned self-consistency, but does not imply statistically independent reconstruction errors.
+
+\section{Method}
+\label{sec:method}
+
+\paragraph{Overview and module interface.}
+\label{sec:overview}
+
+The inputs are posed training images, a baseline point cloud $\mathcal B$, and a learned MVS cloud $\mathcal M$. The baseline cloud is the one that DropGaussian would otherwise use; it may be a classical reconstruction or an unstructured random initialization. We first keep its original Gaussian initialization $\PhiDG(\mathcal B)$ intact, then decide whether to append a residual:
+\begin{equation}
+\mathcal G_0=\PhiDG(\mathcal B)\uplus\Psi(\mathcal M;A,\{\ell'_i\}).
+\label{eq:residual}
+\end{equation}
+Here $A\in[0,1]$ controls scene-level admission, $\ell'_i\in[0,1]$ describes local support, and $\uplus$ denotes appending new Gaussians. Figure~\ref{fig:pipeline} separates the two modules from the unchanged baseline branch. Module~1 estimates the evidence passed to Module~2: self-consistency $\rself$, scene geometry evidence $r_G$, admission $A$, and local support $\{\ell'_i\}$. Module~2 constructs the residual $\Psi$ using that evidence and the candidate geometry. These are initialization-time computations, not additional trainable networks or training losses.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.94\linewidth}{\centering\small
+\textbf{(a) Overall pipeline}\\[3pt]
+Baseline $\mathcal B \longrightarrow \PhiDG(\mathcal B)$ \quad (attributes preserved)\\
+MVS candidates $\mathcal M$ + evidence $\longrightarrow$ residual $\Psi$\\
+$\PhiDG(\mathcal B)\uplus\Psi \longrightarrow$ unchanged DropGaussian training}}
+\\[6pt]
+\fcolorbox{blue!50!black}{blue!4}{\parbox[c]{0.43\linewidth}{\small
+\textbf{(b) Module 1: Reliability and admission}\\[3pt]
+Training observations + $\mathcal B$ + $\mathcal M$\\
+Actual vs.\ mismatched correspondences\\
+Baseline structure + spatial alignment\\
+Global evidence: $\rself,\ r_G,\ A$\\
+Pointwise consistency + anchor support $\to\ell'_i$}}
+\hfill$\longrightarrow$\hfill
+\fcolorbox{orange!70!black}{orange!5}{\parbox[c]{0.43\linewidth}{\small
+\textbf{(c) Module 2: Residual initialization}\\[3pt]
+Candidates + evidence from Module 1\\
+Opacity: control initial influence\\
+Shape: isotropic-to-PCA interpolation\\
+Preserve baseline attributes; append $\Psi$\\
+Empty residual $\to$ original initialization}}
+\caption{\textbf{Two-module, baseline-preserving prior admission.} (a) The original Gaussian branch is retained. (b) Counterfactual reliability and anchored admission produce global evidence and pointwise support. (c) Residual initialization maps this evidence to additional Gaussian attributes. Local support comes from pointwise consistency and nearby baseline structure, not from the scalar admission value. Both modules precede the unchanged training procedure.}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Module 1: Counterfactual Reliability and Anchored Admission}
+\label{sec:admission}
+\label{sec:calibration}
+
+This module answers \emph{whether, and where, the scene supports the learned prior}. It combines relative self-consistency with cross-source anchoring rather than letting either act as a complete correctness test.
+
+\paragraph{Counterfactual self-consistency.}
+For each MVS point, we inspect its projections in the training views. Geometric consistency measures agreement between projected depth and a reference depth. Appearance consistency measures both agreement across sampled image colors and agreement with the point's stored color. Visibility weights reduce the influence of projections with large depth disagreement, and points observed in more views receive greater support.
+
+A small residual alone is difficult to interpret: its scale depends on the scene, while textureless regions may agree even under incorrect correspondences. We therefore construct a comparison within the same scene. In each view, nonzero cyclic shifts reassign sampled reference depths and colors to other points. These mismatches retain the available observations but break the original point--observation associations. For a residual $e_i^+$ and $J$ mismatched residuals $e_{ij}^-$, the comparison is
+\begin{equation}
+q_i=\frac{1}{J}\sum_{j=1}^{J}
+\sigma\!\left(\frac{e_{ij}^- - e_i^+}{\beta}\right),
+\qquad
+\beta=\max\!\left(1.4826\,\MAD(\{e_{ij}^- - e_i^+\}),\varepsilon\right).
+\label{eq:calibration}
+\end{equation}
+The sigmoid produces a soft win score: $q_i$ approaches one when the actual correspondence agrees substantially better than the mismatches, and is near one half when neither is favored. The robust scale $\beta$ is estimated from the current observations separately for each comparison. Only positive excess above the neutral value contributes evidence. Scene-level self-consistency $\rself$ requires both geometry and appearance to exceed this reference; local self-consistency $\ell_i$ also accounts for the number of supported views. The aggregation is specified in Appendix~\ref{app:details}.
+
+Reference depth comes from compatible cached MVS depth maps when available. Otherwise, the point cloud is split into two disjoint sets, and each point is compared with a depth buffer formed by the other set. The latter avoids a point testing against its own splat, but neither backend makes the reference statistically independent of the learned reconstruction. In particular, the cache backend does not track and exclude each point's generating view. These scores are consequently treated as \emph{self-consistency}, not proof of correctness.
+
+\paragraph{Cross-source anchoring.}
+\label{sec:gate}
+
+Self-consistency cannot distinguish every plausible surface from a consistently wrong one. Within the same module, we therefore require two additional signals from $\mathcal B$.
+
+\paragraph{Does the baseline contain surface structure?}
+Local neighborhood covariance indicates whether baseline points are arranged along surfaces rather than filling a volume. We compare this structure with clouds obtained by independently permuting the $x$, $y$, and $z$ coordinates across points. Such controls retain each coordinate's marginal distribution while disrupting many spatial relationships. Evidence beyond these controls gives $\rstruct$. This is important when the baseline is random: the presence of points alone must not be mistaken for geometric confirmation.
+
+\paragraph{Does the learned cloud agree with that structure?}
+For each sampled baseline point, we compare its nearest distance to $\mathcal M$ with distances to coordinate-permuted versions of $\mathcal M$. The resulting score $\ralign$ measures whether actual alignment is better than the within-scene controls. Its direction is deliberate: the learned cloud should explain existing baseline structure, but may also propose geometry where the baseline has no points.
+
+\paragraph{Self-consistency strengthens evidence; it does not create it.}
+Both structural and alignment evidence are required. With $V$ training views, the implemented gate is
+\begin{equation}
+p=\rstruct\,\ralign,\qquad
+\eta=1+V\rself,\qquad
+r_G=1-(1-p)^{V\eta}.
+\label{eq:gate}
+\end{equation}
+This is a monotone evidence-combination rule, not a likelihood derived from independent views. Its key property is simple: if either anchor signal is zero, then $r_G=0$ regardless of MVS self-consistency. A further monotone mapping converts $r_G$ into admission $A$, retaining this zero endpoint (Appendix~\ref{app:details}).
+
+\paragraph{Local support and module output.}
+Local anchor support is combined with $\ell_i$ to form $\ell'_i$, separately from the scalar gate. A point near a structured baseline region receives support according to its distance normalized by local baseline spacing. Away from the baseline, self-consistency can still support a candidate, allowing the residual to extend coverage. Thus, global admission requires cross-source agreement, whereas local allocation does not require every new point to coincide with an existing one. The module passes $\rself$, $r_G$, $A$, and $\{\ell'_i\}$ to the residual initializer; it does not move points or modify baseline attributes.
+
+\subsection{Module 2: Baseline-Preserving Residual Initialization}
+\label{sec:instantiation}
+
+This module answers \emph{how strongly admitted geometry should influence the initial representation}. Given Module~1's evidence, it either returns an empty residual or constructs additional Gaussians with evidence-conditioned attributes.
+
+\paragraph{Preserve the baseline, append a residual.}
+We compute $\PhiDG(\mathcal B)$ using only the original baseline cloud, without recomputing its scales after adding MVS points. Residual centers and colors retain their MVS values. Once the gate opens, we retain a resource-bounded candidate population and control its initial influence through opacity and shape. Merely reducing point count is not equivalent to weakening a prior: larger nearest-neighbor distances can produce larger splats. Admission $A$ therefore controls influence, not the retained-point percentage.
+
+\paragraph{Opacity controls initial influence.}
+Let $u_i=\rself+(1-\rself)\ell'_i$ and let $\bar u$ be its mean over admitted candidates. We initialize residual opacity as
+\begin{equation}
+o_i=\clip\!\left(A\,\frac{u_i}{\max(\bar u,\varepsilon)},0,1\right),
+\qquad
+\alpha_i=1-(1-\alpha_0)^{o_i},
+\qquad \alpha_0=0.1.
+\label{eq:opacity}
+\end{equation}
+This scales the center optical depth of a standard Gaussian by $o_i$. Scene admission controls overall influence, and local support distributes it across points. The mapping is not a bound on final rendering error, and the sum of center optical depths is not an integrated image-space opacity budget. All opacities remain trainable.
+
+\paragraph{Shape controls geometric commitment.}
+We estimate a local PCA frame from the candidate MVS cloud. Let $s^{\mathrm{PCA}}_{ik}$ be the standard deviation along principal axis $k$, and $d_i$ the nearest-neighbor spacing among the baseline and instantiated residual points. The initial scale is
+\begin{equation}
+\log s_{ik}=(1-\zeta_i)\log d_i+
+\zeta_i\log s^{\mathrm{PCA}}_{ik},
+\qquad
+\zeta_i=(r_G\ell'_i)^2.
+\label{eq:shape}
+\end{equation}
+Weak evidence gives a nearly isotropic Gaussian; strong evidence moves it towards the local PCA shape. Its rotation follows the PCA frame. This interpolation expresses different degrees of geometric commitment without moving the candidate center, freezing its position, or adding a geometric loss.
+
+\paragraph{Fallback and scope.}
+For a candidate capacity $N$, the implementation appends no prior when $r_G=0$ or $\lfloor AN\rfloor=0$. The latter is a discrete, capacity-dependent activation condition, not a learned quality threshold. In this case, all initial baseline attributes are recovered. Once residuals are present, their attributes vary continuously with the computed evidence, apart from numerical safeguards; the discrete empty/nonempty decision itself is not continuous. Training otherwise uses the original optimizer, photometric objective, Gaussian dropping, densification, and pruning.
+
+An unstructured baseline is expected to provide weak anchor evidence, regardless of the dataset label. This motivates testing automatic fallback on Blender, but does not guarantee it for every random sample. Conversely, structured and aligned baseline geometry can admit useful learned coverage on any dataset. The guarantee is limited to the empty-residual initialization; correlated errors, imperfect controls, and subsequent optimization can still produce negative transfer.
+
+\section{Experiments}
+\label{sec:exp}
+
+We evaluate the complete two-module initializer against DropGaussian and direct MVS, then test Module~1's admission evidence and Module~2's attribute mappings separately. Scene-level failures and end-to-end cost assess whether any quality gains justify using the prior.
+\PH{Draft status: the tables below specify the final evaluation and remain unfilled until protocol-matched runs are available. Proposed ablations and diagnostics are not reported as completed experiments.}
+
+\subsection{Experimental Protocol}
+\label{sec:protocol}
+
+\paragraph{Datasets and views.}
+We use all scenes in the configured LLFF~\citep{mildenhall2019llff}, Mip-NeRF360~\citep{barron2022mipnerf360}, DTU~\citep{jensen2014large}, and Blender~\citep{mildenhall2020nerf} benchmark sets, giving 38 distinct scenes and 91 scene--view settings. Using all scenes does not mean training on all images. Table~\ref{tab:protocol} fixes the image counts and resolutions; Appendix~\ref{app:protocol} lists scenes and exact selection rules. These are the repository's explicit protocols, rather than a claim that every setting reproduces the original DropGaussian paper.
+
+\begin{table}[t]
+\caption{\textbf{Evaluation coverage.} Each method is run once per scene and view setting. Resolution denotes the configured image downsampling factor.}
+\label{tab:protocol}
+\centering\small
+\begin{tabular}{@{}lrrrl@{}}
+\toprule
+Dataset & Scenes & Training views & Downsample & Test selection\\
+\midrule
+LLFF & 8 & 3 / 6 / 9 & $8\times$ & Every eighth image\\
+Mip-NeRF360 & 7 & 12 / 24 & $8\times$ & Every eighth image\\
+DTU & 15 & 3 / 6 / 9 & $4\times$ & Fixed 25 views, IDR masks\\
+Blender & 8 & 8 & $1\times$ & Every eighth test image\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Paired inputs and training.}
+DropGaussian and \ours{} share the training/test split, resolution, background, baseline cloud, and 10,000-iteration training schedule. LLFF and Mip-NeRF360 load the configured classical dense reconstruction, with sparse reconstruction as the loader's fallback; DTU uses the configured sparse reconstruction. Blender uses the same 10,000-point random baseline in both runs and a white background. We record one fixed random state to reproduce the pair, but perform no repeated-seed experiment and report no seed standard deviation or significance claim.
+
+The MVS candidate cap is 100,000 points for both direct MVS and \ours{}. This matches the candidate budget, not total initial Gaussian count: \ours{} additionally retains the baseline. Actual initial and final counts are therefore reported. All admission constants are shared across datasets. The paired comparison changes initialization only, with the loss $\mathcal L_1+0.2(1-\mathrm{SSIM})$ and the remaining DropGaussian training settings unchanged.
+
+\paragraph{Geometry provenance.}
+Reliability estimation reads only the selected training cameras and images. This alone does not establish that a precomputed point cloud used only those images when it was created. Before including a result, we require the image lists used to produce both the learned cache and the baseline geometry; unknown provenance must be resolved or explicitly disclosed as a different protocol. A matching baseline-cloud hash establishes paired identity, not freedom from held-out-image leakage. Missing-cache fallbacks are reported separately from reliability-driven rejection and are not evidence of successful prior assessment.
+
+\paragraph{Metrics and aggregation.}
+We report PSNR, SSIM, and VGG-LPIPS~\citep{wang2004ssim,zhang2018lpips}. Each scene metric averages its test views, and each setting averages its scenes equally. On DTU, PSNR uses foreground-normalized masked error; SSIM and LPIPS use images composited onto white outside the IDR mask. The remaining datasets use full-image evaluation. The full 91 scene--settings are listed separately rather than collapsed into a mean that silently gives more weight to datasets with more view settings. Per-scene deltas and the worst degradation accompany dataset means. A negative delta remains visible; it is not silently reclassified as a tie.
+
+\subsection{Main Comparison and Negative Transfer}
+\label{sec:main-results}
+
+The primary comparison is paired DropGaussian versus \ours{} in all nine settings (Table~\ref{tab:main}). To separate the benefit of learned geometry from the benefit of admission, we also evaluate \emph{direct MVS}: replace the baseline cloud by the same capped MVS candidate cloud and use standard Gaussian initialization, with no adaptive reliability or attributes. This comparison covers all 38 scenes in the sparsest setting of each dataset (Table~\ref{tab:mvs}). It is a practical alternative, not an isolated ablation of the gate, because it also removes the baseline cloud.
+
+\begin{table}[t]
+\caption{\textbf{Primary paired comparison.} Entries are PSNR$\,\uparrow$/SSIM$\,\uparrow$/LPIPS$\,\downarrow$, averaged over scenes from one run each. $\Delta$PSNR is \ours{} minus DropGaussian. TBD means unmeasured or not yet audited, not zero.}
+\label{tab:main}
+\centering\small
+\setlength{\tabcolsep}{6pt}
+\begin{tabular}{@{}lrccc@{}}
+\toprule
+Dataset & Views & DropGaussian & \ours{} & $\Delta$PSNR\\
+\midrule
+LLFF & 3 & \triplet & \triplet & \pending\\
+ & 6 & \triplet & \triplet & \pending\\
+ & 9 & \triplet & \triplet & \pending\\
+Mip-NeRF360 & 12 & \triplet & \triplet & \pending\\
+ & 24 & \triplet & \triplet & \pending\\
+DTU & 3 & \triplet & \triplet & \pending\\
+ & 6 & \triplet & \triplet & \pending\\
+ & 9 & \triplet & \triplet & \pending\\
+Blender & 8 & \triplet & \triplet & \pending\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\caption{\textbf{Does admission improve on using MVS directly?} All scenes in each listed setting; entries are PSNR/SSIM/LPIPS. The first and last rows reuse the primary runs. Direct MVS replaces rather than augments the baseline.}
+\label{tab:mvs}
+\centering\small
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Initialization & LLFF-3 & Mip-12 & DTU-3 & Blender-8\\
+\midrule
+DropGaussian & \triplet & \triplet & \triplet & \triplet\\
+Direct MVS & \triplet & \triplet & \triplet & \triplet\\
+\ours{} & \triplet & \triplet & \triplet & \triplet\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Blender and scene-level safety.}
+For every Blender scene, we will report both image-quality deltas and the actual admission outcome: anchor structure, alignment, self-consistency, gate value, and appended point count. Closed gates are checked against baseline initialization attributes; final metric equality is an observed outcome, not inferred from the endpoint alone. Open gates and any quality loss must also be reported. This distinguishes a data-driven rejection from a dataset-specific bypass and prevents average scores from hiding negative transfer. The same diagnostics apply to the three real-scene benchmarks.
+
+\paragraph{Comparison with other methods.}
+FastGS, StereoGS, and other sparse-view methods can provide external context, but only runs with verified matching views, resolution, masks, initialization inputs, and training budget belong in a controlled ranking. Published or historical numbers with different protocols are kept in a separately labeled reference table, not mixed into paired deltas. Earlier development results are likewise not substituted for the final paired runs.
+
+\paragraph{Qualitative evidence.}
+The planned figure compares DropGaussian, direct MVS, \ours{}, and ground truth on held-out views from each dataset, using identical crops and error-map scales. It includes a positive-gain case, a low-admission or fallback case, and the largest observed degradation, if any. Initial point clouds colored by reliability help relate the rendering change to admitted geometry. No example is labeled a recovery or a successful rejection before its measurements are available.
+
+\subsection{Two-Module Ablations and Reliability Diagnostics}
+\label{sec:ablations}
+
+Three targeted interventions test the two modules: one removes cross-source anchoring within Module~1, and two isolate opacity and shape within Module~2. All cover the same 38 low-view scenes, reuse the candidate clouds and baseline attributes, and leave training unchanged. Separate attribute interventions distinguish influence allocation from geometric commitment. These are specified experiments, not claims that their runners already exist.
+
+\begin{table}[t]
+\caption{\textbf{Core ablations by module.} M1/M2 identify the modified module, not removal of the whole module. Each row changes only the stated mechanism. Report PSNR here and all three metrics, point counts, and per-scene deltas in the supplement.}
+\label{tab:ablation}
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+Variant & LLFF-3 & Mip-12 & DTU-3 & Blender-8\\
+\midrule
+M1: self-consistency-only admission & \pending & \pending & \pending & \pending\\
+M2: standard residual opacity & \pending & \pending & \pending & \pending\\
+M2: isotropic residual shape & \pending & \pending & \pending & \pending\\
+\ours{} (full; reused) & \pending & \pending & \pending & \pending\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Module 1: cross-source admission.}
+Remove baseline evidence by setting $r_G=A=\rself$ and $\ell'_i=\ell_i$, while retaining the baseline Gaussians and the residual attribute mappings. This asks whether learned self-consistency alone is sufficient to decide admission. The changed number of admitted points is part of the mechanism being tested and is recorded, not concealed.
+
+\paragraph{Module 2: opacity allocation.}
+Keep full-method admission, point selection, and shape, but initialize every admitted residual at the standard opacity $\alpha_0=0.1$. This tests the value of reducing and distributing prior influence through Eq.~\eqref{eq:opacity}; it does not change baseline opacity. A separate uniform-mass variant, $o_i=A$, can further distinguish scene-level weakening from local allocation if the primary comparison warrants it.
+
+\paragraph{Module 2: shape interpolation.}
+Set $\zeta_i=0$ while retaining positions, colors, admission, opacity, and the same spacing $d_i$. This tests whether reliability-conditioned anisotropy adds value beyond admitting extra points. It does not substitute the baseline's three-neighbor scale rule for the residual's nearest-neighbor spacing.
+
+\paragraph{Capacity control.}
+Direct MVS and the baseline have different total point counts from \ours{}. To check whether gains are merely due to extra capacity, a separate control should append the identical candidate points to an unchanged baseline with standard opacity and isotropic residual scales. On scenes with an open full-method gate, it has the same initial point count as \ours{}; closed-gate scenes are reported separately. The existing union-and-reinitialize option is not an equivalent control, because it can recompute baseline scales. This control requires a dedicated implementation and is not assumed to be available.
+
+\paragraph{Module 1 diagnostics: does the evidence respond to reliability?}
+We will examine raw residuals and calibrated scores alongside held-out rendering deltas, without treating the test set as input to admission. A controlled stress test will degrade the prior through normalized coordinate noise, coherent geometric displacement, and color mismatches while holding cameras, the baseline, and candidate count fixed. The corruption levels and cache-consistency policy must be fixed before examining test results. We will report whether $r_G$, $A$, and the resulting quality change sensibly; monotonic behavior is a hypothesis, not a guaranteed property. A common rotation of clouds and cameras also tests coordinate-frame sensitivity, without adding random rotations to the method.
+
+Where DTU reference geometry and coordinate alignment are available, point-to-surface error can be plotted across reliability quantiles. Ground truth is used only for this offline diagnostic, never to set admission. Continuous error summaries avoid inventing a geometric correctness threshold. This optional analysis does not require an expensive oracle-admission sweep.
+
+\subsection{Convergence and Computational Cost}
+\label{sec:efficiency}
+
+We compare quality at 500, 1,000, 2,000, 4,000, 7,000, and 10,000 iterations. For each scene, time-to-quality is assessed against that scene's paired DropGaussian PSNR at 10,000 iterations. The first evaluated checkpoint reaching this target is reported; if none reaches it, the outcome is \emph{not reached}, not an extrapolated iteration. The target is retrospective reporting only and does not control training or gate selection.
+
+Intermediate and final scores must use the same evaluation protocol. In particular, the current online DTU curve is full-image PSNR, whereas the final benchmark uses foreground masks. DTU time-to-quality therefore remains pending until intermediate renders are evaluated with the same masked evaluator. For other datasets, curve endpoints are kept within the same online evaluator rather than mixed with quantized saved-image metrics.
+
+\begin{table}[t]
+\caption{\textbf{Efficiency reporting template.} Repeat this comparison for each low-view dataset setting on the same GPU. Report initial/final Gaussian count, full-run wall time including MVS preprocessing, peak allocated GPU memory, and target-reaching checkpoint. TBD entries require measurement; report \emph{not reached} when appropriate.}
+\label{tab:efficiency}
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Method & Initial/final count & Total time & Peak memory & Target iteration\\
+\midrule
+DropGaussian & \pending & \pending & \pending & \pending\\
+Direct MVS & \pending & \pending & \pending & \pending\\
+\ours{} & \pending & \pending & \pending & \pending\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Wall time is separated into offline MVS prediction, initialization/reliability processing, and optimization with evaluation overhead stated explicitly. The existing training wall timer already includes scene initialization, so that component must not be added twice. We report cached-prior and end-to-end timings separately, and do not infer wall-clock acceleration from fewer iterations. A closed gate avoids extra trainable Gaussians, but still incurs prior loading and assessment, and potentially MVS prediction. Peak memory and final model size are reported alongside quality; GPU model and timing boundaries must accompany the completed table.
+
+\section{Limitations and Conclusion}
+\label{sec:conclusion}
+
+\ours{} separates prior use into two modules. Counterfactual reliability and anchored admission determine the scene and local support for learned geometry. Baseline-preserving residual initialization converts that evidence into additional Gaussians with controlled initial opacity and shape. This evidence-to-initialization interface leaves DropGaussian's training intact and recovers its initialization when no residual is admitted.
+
+The mechanism is conservative when the baseline contains little useful structure, and may reject a correct prior. Its coordinate-permutation controls are axis-dependent: an axis-aligned plane, for example, may remain planar after permutation. Cross-source errors can also agree, and cached depth can include self-confirming observations. Finally, weak initial opacity does not ensure that a correct point will later recover: opacity is optimized through a sigmoid, and rasterization and pruning can suppress weak primitives. These limitations rule out universal rotation invariance, independent-error guarantees, or guaranteed non-degradation after training. The proposed comparisons and diagnostics are intended to measure the practical benefit and failure boundary of the implemented initializer.
+
+\subsection*{AI use statement}
+Generative AI assisted manuscript editing and code--manuscript consistency checking.
+\PH{Before submission, the authors must complete the conference disclosure for all other uses, review the final text, references, implementation descriptions, and results, and confirm responsibility for the submitted work.}
+
+\subsection*{Reproducibility statement}
+Appendix~\ref{app:details} records the implemented mappings and numerical settings. Appendix~\ref{app:protocol} specifies scene coverage and evaluation, and Appendix~\ref{app:execution} distinguishes existing experiment entry points from proposed controls. The final release must include the exact code revision, input provenance, per-scene metrics, and runtime environment. \PH{The final experiment artifacts and anonymized code-release information remain to be added.}
+
+\bibliography{references}
+\bibliographystyle{iclr2027_conference}
+
+\clearpage
+\appendix
+\section{Implementation Details}
+\label{app:details}
+
+This appendix follows the same two-module organization and supplies aggregation and initialization details omitted from the main text. It describes the current implementation rather than alternative designs.
+
+\subsection{Module 1: Evidence Estimation and Admission}
+\label{app:admission}
+
+\paragraph{Self-consistency aggregation.}
+Geometric residual is the median absolute log-depth difference over valid views. Appearance residual averages visibility-weighted color dispersion across views and visibility-weighted disagreement with the stored point color. Visibility weights decay exponentially with absolute log-depth disagreement; their scale is the median disagreement plus $1.4826$ times its MAD. If a point has $v_i$ valid views out of $V$, its support is $w_i=\clip((v_i-1)/\max(V-1,1),0,1)$. Unsupported comparisons return the neutral score $1/2$.
+
+Let $q_i^g,q_i^a$ be the two outputs of Eq.~\eqref{eq:calibration}, $\bar q^g,\bar q^a$ their support-weighted means, and $E_\kappa(q)=[\max(2q-1,0)]^\kappa$. Then
+\begin{equation}
+\rself=\sqrt{E_2(\bar q^g)E_2(\bar q^a)},\qquad
+\ell_i=w_i E_1\!\left(
+\sigma\!\left(\frac{\logit q_i^g+\logit q_i^a}{2}\right)\right).
+\label{eq:local}
+\end{equation}
+The neutral boundary expresses a comparison with the constructed controls, not a proven chance-level null distribution for correlated scene points.
+
+\paragraph{Anchor evidence.}
+For local covariance eigenvalues $\lambda_1\le\lambda_2\le\lambda_3$, the structure statistic is $1-3\lambda_1/(\lambda_1+\lambda_2+\lambda_3)$, with a numerical denominator floor. Each coordinate-permuted baseline cloud is compared with the original using Eq.~\eqref{eq:calibration} on one minus this statistic. Applying $E_2$ to the mean win score for each draw and taking the geometric mean across draws yields $\rstruct$. Alignment instead applies $E_1$ to the mean win score for baseline-to-prior nearest-neighbor distance, using coordinate-permuted priors as controls. Both permutations operate in the existing coordinate frame; no random frame rotations are performed.
+
+\paragraph{Admission and local support.}
+After Eq.~\eqref{eq:gate}, the implemented admission mapping is
+\begin{equation}
+A=1-\left(1-\min\left\{1,
+\frac{r_G}{\max(1-\rself,\varepsilon)}\right\}\right)^\eta.
+\label{eq:admission}
+\end{equation}
+For a prior point, let $\delta_i$ be its nearest-baseline distance divided by that baseline point's nearest-neighbor spacing. Its local anchor support is $a_i=\rstruct\exp(-\delta_i^2/2)$, and the final local score is $\ell'_i=1-(1-\ell_i)(1-a_i)$. With too few baseline points for this calculation, the implementation uses self-consistency alone locally; the scene gate still applies.
+
+\paragraph{Evidence-estimation settings.}
+We use three counterfactual draws, up to nine points per structure neighborhood, a maximum image-grid side of 256 pixels, and at most 50,000 evenly indexed baseline queries for structure and alignment. Coordinate permutations use a dedicated deterministic generator. These settings control computation and numerical behavior, not dataset-specific acceptance cutoffs.
+
+\subsection{Module 2: Residual Construction and Fallback}
+\label{app:initialization}
+
+\paragraph{Capacity and numerical settings.}
+The standard adaptive scene loader caps the candidate population to the residual capacity, 100,000 points by default; after an open gate, it therefore retains that population rather than sampling a fraction $A$ of it. Residual PCA uses up to nine points per covariance neighborhood.
+
+PCA standard deviations are square roots of local eigenvalues floored by machine precision times $d_i^2$. Proper rotations are converted to unit quaternions. The initializer applies scale floors and clamps residual opacities away from zero and one before inverse-sigmoid parameterization. Baseline scales retain the original three-neighbor rule, isotropic rotation, color initialization, and opacity $0.1$; residual spacing in Eq.~\eqref{eq:shape} is a separate one-neighbor calculation.
+
+\paragraph{What the zero endpoint establishes.}
+If no residual is returned, the baseline attributes are constructed by the original path, and the estimator's dedicated random generator does not consume the training random stream. This supports a direct initialization-level equality test. Identical final GPU training trajectories additionally depend on deterministic execution and are not asserted as a general theorem. No rotation-invariance proposition, finite-sample calibration guarantee, or bound on trained rendering quality is used.
+
+\section{Detailed Evaluation Protocol}
+\label{app:protocol}
+
+\paragraph{Scene coverage.}
+LLFF: fern, flower, fortress, horns, leaves, orchids, room, trex.
+Mip-NeRF360: bicycle, bonsai, counter, garden, kitchen, room, stump.
+DTU: scan8, scan21, scan30, scan31, scan34, scan38, scan40, scan41, scan45, scan55, scan63, scan82, scan103, scan110, scan114.
+Blender: chair, drums, ficus, hotdog, lego, materials, mic, ship.
+
+\paragraph{Image selection.}
+LLFF and Mip-NeRF360 sort cameras by image name, hold out indices divisible by eight, and take the requested number of approximately evenly spaced indices from the remaining cameras. DTU uses prefixes of the ordered zero-based training list $(25,22,28,40,44,48,0,8,13)$ for 3/6/9 views, with test indices
+\begin{quote}\small
+1, 2, 9, 10, 11, 12, 14, 15, 23, 24, 26, 27, 29, 30, 31, 32, 33, 34, 35, 41, 42, 43, 45, 46, 47.
+\end{quote}
+Blender uses training-frame indices $(2,16,26,55,73,76,86,93)$ and indices divisible by eight in the supplied test sequence. At the configured full resolution this is $800\times800$ for the standard images. These conventions must accompany comparisons with external results.
+
+\paragraph{Run identity and evidence.}
+For every paired run, retain the code revision, arguments, camera names, baseline-cloud hash, MVS source and generation-image list, candidate cap, actual point counts, and metric files. A preexisting cache without verified source images is not silently declared training-only. Both methods must use the same baseline asset; changing its reconstruction protocol is a separate experiment. Report missing assets, failed runs, missing masks, and missing-cache fallbacks rather than dropping scenes from an average.
+
+\paragraph{Scene-level results.}
+For all 91 scene--settings, the completed supplement will list paired PSNR, SSIM, and LPIPS, signed deltas, anchor structure, spatial alignment, self-consistency, gate value, admission, and fallback reason. Report the worst PSNR change and all negative-transfer cases, together with SSIM and LPIPS changes. If an application-specific tolerance is used, declare it in advance and still provide the raw values. One run per setting supports descriptive comparison, not an estimate of training variability.
+
+\section{Experiment Coverage and Remaining Work}
+\label{app:execution}
+
+This working-draft checklist prevents planned evidence from being confused with completed results.
+
+\begin{table}[h]
+\caption{\textbf{Core experiment inventory.} Counts denote planned training runs, not completed runs. One Module~1 intervention and two Module~2 interventions use all scenes at the lowest configured view count. Existing baseline/full runs are reused for comparisons.}
+\centering\small
+\begin{tabular}{@{}lrl@{}}
+\toprule
+Experiment & Runs & Implementation status\\
+\midrule
+DropGaussian + \ours{}, all 91 settings & 182 & Existing paired workflow\\
+Direct MVS, all 38 low-view scenes & 38 & Existing per-dataset scripts\\
+M1/M2 core ablations, $3\times38$ & 114 & Dedicated interventions needed\\
+\midrule
+Core total & 334 & One run per configuration\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The paired entry point is \path{scripts/all/run_all.sh}. Direct-MVS scripts are in \path{scripts/mvs/}; their defaults cover LLFF-3, DTU-3, Mip-NeRF360-12, and Blender-8. The paired workflow does not automatically execute direct MVS or the proposed component ablations.
+
+Capacity-matched residual addition, corruption stress tests, and uniform-mass opacity are additional controls, not included in the 334-run total. Initialization-only diagnostics can be collected without full retraining; rendering robustness to a corrupted prior requires new training and must be budgeted separately. Quantile analysis against DTU reference geometry requires aligned ground-truth assets. Wall-clock time-to-quality requires checkpoint timestamps not supplied by the current convergence JSON, and DTU masked convergence requires intermediate masked evaluation. These are measurement tasks, not additional contributions claimed for the present algorithm.
+
+Final reporting should prioritize the full paired comparison, direct MVS, the three core ablations, per-scene failure analysis, qualitative crops, and honest end-to-end cost. Results should determine the final abstract and conclusions; placeholders must not be replaced by assumptions about how the gate ought to behave.
+
+\end{document}

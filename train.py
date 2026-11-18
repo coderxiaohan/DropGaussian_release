@@ -249,11 +249,6 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         "protocol": protocol,
         "command": list(sys.argv),
     }
-    geometry_mode = getattr(dataset, "mvs_geometry_correction", "none")
-    if geometry_mode != "none":
-        manifest["method"] += "+" + geometry_mode.upper() + "-Init"
-    if getattr(dataset, "mvs_surface_init", "none") != "none":
-        manifest["method"] += "+MVS-Surface-OAS-Init"
     if density_config.mode != "none":
         manifest["method"] += "+" + density_config.mode.upper()
         manifest["density_control"] = {

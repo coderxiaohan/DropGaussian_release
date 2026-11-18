@@ -1,0 +1,46 @@
+Tool: built-in image_gen
+Asset: capa_pipeline_v1.png
+Note: Generated initial version. Subsequent arrow-routing refinement requests failed due to connection errors; no refined image was returned.
+
+GENERATION PROMPT
+
+Use case: infographic-diagram.
+Asset type: publication-quality pipeline figure for an ICLR 3D Gaussian Splatting paper.
+Primary request: Create a new, scientifically accurate CAPA pipeline figure. Use the user's attached pipeline ONLY as a visual layout/style reference: one wide overall-pipeline panel at the top, two detailed module panels side by side underneath, pale blue and pale orange accents, thin rounded panel borders, neat navy arrows, small coherent plant images, colored point clouds and translucent Gaussian ellipsoids. Do NOT reproduce the reference algorithm. Omit the university logo, institutional heading, slide frame, and watermark. This is a standalone English paper figure.
+Canvas: high-resolution wide landscape, approximately 3200 by 1850 pixels, white background, generous margins. Main section titles in readable bold serif; module labels in crisp readable sans-serif; generous whitespace. Prioritize correct connections and readable text over tiny decorative details. Same small potted green plant is used in every image/point-cloud illustration. Show a few realistic multi-view thumbnails, not abstract boxes alone.
+
+Small overall heading: "CAPA: Counterfactual-Anchored Prior Admission".
+
+PANEL (a), full width, upper 38% of figure. Title EXACTLY "(a) Overall pipeline".
+Read LEFT TO RIGHT. Far left card "Sparse training images + camera poses", showing three plant photos and camera frustums.
+This input feeds TWO stacked branches: upper "Baseline point cloud B" (sparse structured plant points) -> "Original DG initialization"; lower "MVSAnywhere" -> "MVS candidates M" (dense colored plant point cloud) -> a compact blue/orange box "CAPA" with subtitle "Reliability → Admission → Attributes".
+The upper original-DG branch BYPASSES CAPA intact. The baseline point cloud also supplies a thin downward side arrow into CAPA labelled "Anchor evidence". The original-DG branch and CAPA output meet at a clear circular plus node, then "Initial Gaussians G0", then "DropGaussian training" with subtitle "Unchanged", then "Novel-view rendering" showing two sharp plant thumbnails. A short annotation on the upper bypass reads "Baseline attributes preserved". Do NOT draw MVS replacing the baseline. Keep arrowheads clear and leave labels unobstructed.
+
+PANEL (b), lower LEFT 52% of width, pale blue border/background tint. Title EXACTLY "(b) Counterfactual reliability and anchored admission".
+Use three vertically stacked evidence rows leading RIGHT into one scene gate, with tiny data illustrations rather than walls of text.
+Row 1 title "MVS self-consistency". Show two miniature point-to-image/depth comparison illustrations labelled "Actual matches" and "Shifted matches"; an arrow to "Relative depth + color agreement", then a small output "r_self".
+Row 2 title "Baseline structure". Show a sparse surface point patch versus volume-like shuffled points, labels "Original B" and "Permuted B", then output "r_struct".
+Row 3 title "Cross-source alignment". Show sparse dark-blue baseline points over a dense green surface, versus mismatched shuffled dense points, labels "B → M" and "B → permuted M", then output "r_align".
+At the right edge of this panel, r_struct and r_align feed a compact gate labelled "Anchored gate". Include the short correct equation "p = r_struct × r_align". The r_self row joins this gate through a DASHED arrow labelled "Amplify only". The gate outputs "Scene admission A" and "Local support ℓ′". Clearly distinguish global admission from local support. Add small gate note: "No anchor evidence → A = 0".
+A blue bottom caption strip reads EXACTLY "Compare against scene-internal controls; anchor before trusting".
+Ensure the local-support output is not depicted as simply equal to the scalar A: it represents combined pointwise consistency and nearby-baseline support; if useful draw a separate small lower output connector from the evidence area to "Local support ℓ′".
+
+PANEL (c), lower RIGHT 46% of width, pale orange border/background tint. Title EXACTLY "(c) Baseline-preserving residual initialization".
+Three clean stages LEFT TO RIGHT, with a thin protected baseline bypass above them.
+Top bypass: "Original DG Gaussians" -> long thin dark-blue arrow -> plus node near the final combined Gaussian illustration. Small note "Keep original attributes".
+Lower main path: "MVS candidates" point cloud -> "Reliability-to-attribute mapping" card -> "Residual Gaussians" translucent colored ellipsoid cloud -> the same plus node -> combined small plant Gaussian illustration labelled "G0".
+Inside the mapping card, show two stacked illustrated controls, not plots crowded with text:
+1. label "Opacity"; two same-size ellipsoids, one faint and one more opaque, left-to-right cue "Weak → Strong"; short correct formula "α = 1 − (1 − α0)^o".
+2. label "Shape"; sphere on left and surface-aligned thin ellipsoid on right, left-to-right cue "Isotropic → PCA"; short correct formula "ζ = (r_G ℓ′)²".
+Place small input tags "A" and "ℓ′" entering the mapping card, referring to panel b. Footnote under mapping "MVS positions and colors unchanged".
+Separate thin bottom fallback lane inside this panel: a grey arrow labelled "A = 0: no residual" leads to "Original DG initialization". This must show no new MVS Gaussians and must not claim guaranteed final rendering quality.
+An orange bottom caption strip reads EXACTLY "Retain the baseline; control the prior's initial influence".
+
+Bottom-most discreet single-line note: "Training-view evidence only • No dataset-specific routing • No added training loss".
+
+Scientific constraints:
+This method modifies initialization ONLY. No novel adaptive densification, no new pruning algorithm, no multi-view training regularizer, no learned reliability network, no position correction, no geometry loss, no normal loss. Standard DropGaussian optimization is unchanged.
+The MVS self-consistency cannot open the gate on its own. Baseline structure and cross-source alignment are prerequisites. Added MVS Gaussians are appended, never substituted for baseline Gaussians. A is an influence/admission strength, NOT a retained-point percentage. The fallback guarantees baseline initialization, not better PSNR.
+Do not include dataset names, benchmark scores, ground-truth depth, institution logos, watermarks, or extra invented methods.
+Use high visual fidelity, clean arrow routing, coherent plant assets, sparse but accurate formulas, readable text, balanced panel spacing.
+

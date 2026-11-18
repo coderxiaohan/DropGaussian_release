@@ -4,6 +4,8 @@ set -euo pipefail
 # Direct MVS initialization + the existing FastGS-inspired VCD/VCP controller.
 # Pin MODE=mvs so neither the caller's environment nor extra CLI options can
 # re-enable adaptive initialization; the common runner forces replace last.
+# Geometry-warp and surface-covariance experiments have been removed; reject
+# their old options instead of silently treating them as direct-MVS runs.
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 dataset=${1:?A dataset is required}
 shift
@@ -11,6 +13,26 @@ case "$dataset" in
     llff|dtu|mipnerf360|blender) ;;
     *) echo "Unsupported dataset: $dataset" >&2; exit 2 ;;
 esac
+
+for argument in "$@"; do
+    argument_name=${argument%%=*}
+    case "$argument_name" in
+        --mvs_geometry*|--mvs_surface*)
+            echo "Removed geometry/surface experiment option: $argument_name." >&2
+            exit 2
+            ;;
+        --?*)
+            # Reject the former argparse abbreviations as well. The retained
+            # --mvs_init_* and --mvs_complement_* options are unaffected.
+            for removed_prefix in --mvs_geometry --mvs_surface; do
+                if [[ "$removed_prefix" == "$argument_name"* ]]; then
+                    echo "Removed geometry/surface experiment option abbreviation: $argument_name." >&2
+                    exit 2
+                fi
+            done
+            ;;
+    esac
+done
 
 for argument in "$@"; do
     if [[ "$argument" == "--help" || "$argument" == "-h" ]]; then
@@ -21,6 +43,7 @@ for argument in "$@"; do
             'MVS replaces the baseline cloud: no adaptive MVS scoring, gate, or residual fusion.' \
             'Not an exact reproduction of upstream FastGS VCD/VCP.' \
             'Forces --init_mode mvs_anywhere --mvs_init_strategy replace.' \
+            'Geometry warping and surface-covariance initialization are unavailable.' \
             'MODE and MVS_INIT_STRATEGY cannot change this initialization policy.' \
             'Missing/incompatible MVS caches are errors; no baseline fallback.' \
             '' \

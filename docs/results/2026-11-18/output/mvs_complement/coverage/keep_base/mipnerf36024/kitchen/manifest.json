@@ -1,0 +1,4435 @@
+{
+  "command": [
+    "/home/wuxiaohan/wxh/DropGaussian_mvsinit_gated/train.py",
+    "-s",
+    "/home/wuxiaohan/wxh/data/mipnerf360/kitchen",
+    "-m",
+    "/home/wuxiaohan/wxh/DropGaussian_mvsinit_gated/output/mvs_complement/coverage/keep_base/mipnerf36024/kitchen",
+    "--dataset_name",
+    "mipnerf360",
+    "--eval",
+    "-r",
+    "8",
+    "--n_views",
+    "24",
+    "--iterations",
+    "10000",
+    "--test_iterations",
+    "500",
+    "1000",
+    "2000",
+    "4000",
+    "7000",
+    "10000",
+    "--save_iterations",
+    "10000",
+    "--seed",
+    "0",
+    "--port",
+    "0",
+    "--density_control",
+    "vcd_vcp",
+    "--mvs_init_max_points",
+    "100000",
+    "--mvs_geometry_correction",
+    "none",
+    "--mvs_surface_init",
+    "none",
+    "--mvs_geometry_correction",
+    "none",
+    "--mvs_surface_init",
+    "none",
+    "--mvs_complement_mode",
+    "coverage",
+    "--mvs_complement_max_points",
+    "100000",
+    "--mvs_complement_total_points",
+    "0",
+    "--mvs_complement_candidate_points",
+    "500000",
+    "--mvs_complement_coverage_pixels",
+    "2.0",
+    "--mvs_complement_depth_scale",
+    "0.02",
+    "--density_control",
+    "vcd_vcp",
+    "--init_mode",
+    "mvs_anywhere",
+    "--mvs_init_strategy",
+    "replace"
+  ],
+  "completed_iterations": 10000,
+  "convergence_curve": [
+    {
+      "gaussian_count": 2624460,
+      "iteration": 500,
+      "test_l1": 0.05000547851834978,
+      "test_psnr": 21.86599815913609,
+      "train_l1": 0.03978642130581041,
+      "train_psnr": 23.721376657485962
+    },
+    {
+      "gaussian_count": 2626174,
+      "iteration": 1000,
+      "test_l1": 0.04418878885252135,
+      "test_psnr": 22.55669937133789,
+      "train_l1": 0.029867445894827444,
+      "train_psnr": 26.013100226720173
+    },
+    {
+      "gaussian_count": 2639553,
+      "iteration": 2000,
+      "test_l1": 0.03877669514289924,
+      "test_psnr": 23.248008183070592,
+      "train_l1": 0.019315215254512925,
+      "train_psnr": 29.62229832013448
+    },
+    {
+      "gaussian_count": 2549675,
+      "iteration": 4000,
+      "test_l1": 0.03563538161771638,
+      "test_psnr": 23.733287920270648,
+      "train_l1": 0.011922306613996625,
+      "train_psnr": 33.323396046956375
+    },
+    {
+      "gaussian_count": 2437263,
+      "iteration": 7000,
+      "test_l1": 0.03319410500781877,
+      "test_psnr": 24.165535354614256,
+      "train_l1": 0.009500946286910523,
+      "train_psnr": 35.33439254760742
+    },
+    {
+      "gaussian_count": 2329360,
+      "iteration": 10000,
+      "test_l1": 0.03293324804731777,
+      "test_psnr": 24.267351368495394,
+      "train_l1": 0.008789775737871725,
+      "train_psnr": 36.15881816546122
+    }
+  ],
+  "density_control": {
+    "config": {
+      "contribution_quantile": 0.1,
+      "error_quantile": 0.75,
+      "min_views": 2,
+      "mode": "vcd_vcp"
+    },
+    "diagnostic_views": "all_distinct_training_views",
+    "dropout_during_diagnostics": false,
+    "event_log": "/home/wuxiaohan/wxh/DropGaussian_mvsinit_gated/output/mvs_complement/coverage/keep_base/mipnerf36024/kitchen/density_control.jsonl",
+    "events": [
+      {
+        "elapsed_seconds": 1.1582055410835892,
+        "evaluated_views": 24,
+        "input_count": 2624460,
+        "iteration": 600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2624460,
+        "topology": {
+          "cleanup_pruned": 928,
+          "cloned": 203,
+          "input_count": 2624460,
+          "output_count": 2623877,
+          "prune_all_guard": false,
+          "split_children": 740,
+          "split_parents": 370,
+          "vcd_candidates": 2239232,
+          "vcp_pruned": 228,
+          "vcp_requested": 228
+        },
+        "vcd_supported": 2239232,
+        "vcp_candidates": 228,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 0.0,
+        "vcp_verified": 228
+      },
+      {
+        "elapsed_seconds": 1.0795988379977643,
+        "evaluated_views": 24,
+        "input_count": 2623877,
+        "iteration": 700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2623877,
+        "topology": {
+          "cleanup_pruned": 424,
+          "cloned": 521,
+          "input_count": 2623877,
+          "output_count": 2624563,
+          "prune_all_guard": false,
+          "split_children": 1268,
+          "split_parents": 634,
+          "vcd_candidates": 2242698,
+          "vcp_pruned": 45,
+          "vcp_requested": 45
+        },
+        "vcd_supported": 2242698,
+        "vcp_candidates": 45,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 7.450580596923828e-09,
+        "vcp_verified": 45
+      },
+      {
+        "elapsed_seconds": 1.0730109189171344,
+        "evaluated_views": 24,
+        "input_count": 2624563,
+        "iteration": 800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2624563,
+        "topology": {
+          "cleanup_pruned": 558,
+          "cloned": 616,
+          "input_count": 2624563,
+          "output_count": 2625323,
+          "prune_all_guard": false,
+          "split_children": 1510,
+          "split_parents": 755,
+          "vcd_candidates": 2261561,
+          "vcp_pruned": 53,
+          "vcp_requested": 53
+        },
+        "vcd_supported": 2261561,
+        "vcp_candidates": 53,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.1175870895385742e-08,
+        "vcp_verified": 53
+      },
+      {
+        "elapsed_seconds": 1.0668565511005,
+        "evaluated_views": 24,
+        "input_count": 2625323,
+        "iteration": 900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2625316,
+        "topology": {
+          "cleanup_pruned": 602,
+          "cloned": 726,
+          "input_count": 2625323,
+          "output_count": 2626174,
+          "prune_all_guard": false,
+          "split_children": 1616,
+          "split_parents": 808,
+          "vcd_candidates": 2309645,
+          "vcp_pruned": 81,
+          "vcp_requested": 81
+        },
+        "vcd_supported": 2309645,
+        "vcp_candidates": 81,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.2351741790771484e-08,
+        "vcp_verified": 81
+      },
+      {
+        "elapsed_seconds": 1.0810568460728973,
+        "evaluated_views": 24,
+        "input_count": 2626174,
+        "iteration": 1000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2626165,
+        "topology": {
+          "cleanup_pruned": 537,
+          "cloned": 809,
+          "input_count": 2626174,
+          "output_count": 2627274,
+          "prune_all_guard": false,
+          "split_children": 1778,
+          "split_parents": 889,
+          "vcd_candidates": 2310747,
+          "vcp_pruned": 61,
+          "vcp_requested": 61
+        },
+        "vcd_supported": 2310747,
+        "vcp_candidates": 61,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 61
+      },
+      {
+        "elapsed_seconds": 1.067170470021665,
+        "evaluated_views": 24,
+        "input_count": 2627274,
+        "iteration": 1100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2627244,
+        "topology": {
+          "cleanup_pruned": 573,
+          "cloned": 880,
+          "input_count": 2627274,
+          "output_count": 2628460,
+          "prune_all_guard": false,
+          "split_children": 1894,
+          "split_parents": 947,
+          "vcd_candidates": 2301548,
+          "vcp_pruned": 68,
+          "vcp_requested": 68
+        },
+        "vcd_supported": 2301548,
+        "vcp_candidates": 68,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.4901161193847656e-08,
+        "vcp_verified": 68
+      },
+      {
+        "elapsed_seconds": 1.0464039610233158,
+        "evaluated_views": 24,
+        "input_count": 2628460,
+        "iteration": 1200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2628414,
+        "topology": {
+          "cleanup_pruned": 522,
+          "cloned": 994,
+          "input_count": 2628460,
+          "output_count": 2629851,
+          "prune_all_guard": false,
+          "split_children": 1954,
+          "split_parents": 977,
+          "vcd_candidates": 2362353,
+          "vcp_pruned": 58,
+          "vcp_requested": 58
+        },
+        "vcd_supported": 2362353,
+        "vcp_candidates": 58,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 58
+      },
+      {
+        "elapsed_seconds": 1.0545543850166723,
+        "evaluated_views": 24,
+        "input_count": 2629851,
+        "iteration": 1300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2629777,
+        "topology": {
+          "cleanup_pruned": 452,
+          "cloned": 987,
+          "input_count": 2629851,
+          "output_count": 2631296,
+          "prune_all_guard": false,
+          "split_children": 1882,
+          "split_parents": 941,
+          "vcd_candidates": 2395499,
+          "vcp_pruned": 31,
+          "vcp_requested": 31
+        },
+        "vcd_supported": 2395499,
+        "vcp_candidates": 31,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.1175870895385742e-08,
+        "vcp_verified": 31
+      },
+      {
+        "elapsed_seconds": 1.0846015240531415,
+        "evaluated_views": 24,
+        "input_count": 2631296,
+        "iteration": 1400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2631209,
+        "topology": {
+          "cleanup_pruned": 421,
+          "cloned": 943,
+          "input_count": 2631296,
+          "output_count": 2632801,
+          "prune_all_guard": false,
+          "split_children": 2052,
+          "split_parents": 1026,
+          "vcd_candidates": 2414288,
+          "vcp_pruned": 43,
+          "vcp_requested": 43
+        },
+        "vcd_supported": 2414288,
+        "vcp_candidates": 43,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.2351741790771484e-08,
+        "vcp_verified": 43
+      },
+      {
+        "elapsed_seconds": 1.0759049650514498,
+        "evaluated_views": 24,
+        "input_count": 2632801,
+        "iteration": 1500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2632683,
+        "topology": {
+          "cleanup_pruned": 466,
+          "cloned": 1001,
+          "input_count": 2632801,
+          "output_count": 2634333,
+          "prune_all_guard": false,
+          "split_children": 2072,
+          "split_parents": 1036,
+          "vcd_candidates": 2376252,
+          "vcp_pruned": 39,
+          "vcp_requested": 39
+        },
+        "vcd_supported": 2376252,
+        "vcp_candidates": 39,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.2351741790771484e-08,
+        "vcp_verified": 39
+      },
+      {
+        "elapsed_seconds": 1.0621163210598752,
+        "evaluated_views": 24,
+        "input_count": 2634333,
+        "iteration": 1600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2634177,
+        "topology": {
+          "cleanup_pruned": 499,
+          "cloned": 1000,
+          "input_count": 2634333,
+          "output_count": 2635773,
+          "prune_all_guard": false,
+          "split_children": 2008,
+          "split_parents": 1004,
+          "vcd_candidates": 2419167,
+          "vcp_pruned": 65,
+          "vcp_requested": 65
+        },
+        "vcd_supported": 2419167,
+        "vcp_candidates": 65,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 7.450580596923828e-09,
+        "vcp_verified": 65
+      },
+      {
+        "elapsed_seconds": 1.0778745569987223,
+        "evaluated_views": 24,
+        "input_count": 2635773,
+        "iteration": 1700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2635580,
+        "topology": {
+          "cleanup_pruned": 410,
+          "cloned": 961,
+          "input_count": 2635773,
+          "output_count": 2637148,
+          "prune_all_guard": false,
+          "split_children": 1752,
+          "split_parents": 876,
+          "vcd_candidates": 2409644,
+          "vcp_pruned": 52,
+          "vcp_requested": 52
+        },
+        "vcd_supported": 2409644,
+        "vcp_candidates": 52,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 52
+      },
+      {
+        "elapsed_seconds": 1.0660977839725092,
+        "evaluated_views": 24,
+        "input_count": 2637148,
+        "iteration": 1800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2636920,
+        "topology": {
+          "cleanup_pruned": 509,
+          "cloned": 949,
+          "input_count": 2637148,
+          "output_count": 2638388,
+          "prune_all_guard": false,
+          "split_children": 1704,
+          "split_parents": 852,
+          "vcd_candidates": 2447381,
+          "vcp_pruned": 52,
+          "vcp_requested": 52
+        },
+        "vcd_supported": 2447381,
+        "vcp_candidates": 52,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7939677238464355e-08,
+        "vcp_verified": 52
+      },
+      {
+        "elapsed_seconds": 1.0682242839829996,
+        "evaluated_views": 24,
+        "input_count": 2638388,
+        "iteration": 1900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2638109,
+        "topology": {
+          "cleanup_pruned": 417,
+          "cloned": 912,
+          "input_count": 2638388,
+          "output_count": 2639553,
+          "prune_all_guard": false,
+          "split_children": 1424,
+          "split_parents": 712,
+          "vcd_candidates": 2470398,
+          "vcp_pruned": 42,
+          "vcp_requested": 42
+        },
+        "vcd_supported": 2470398,
+        "vcp_candidates": 42,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 42
+      },
+      {
+        "elapsed_seconds": 1.0786052029579878,
+        "evaluated_views": 24,
+        "input_count": 2639553,
+        "iteration": 2000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2639251,
+        "topology": {
+          "cleanup_pruned": 450,
+          "cloned": 848,
+          "input_count": 2639553,
+          "output_count": 2640474,
+          "prune_all_guard": false,
+          "split_children": 1148,
+          "split_parents": 574,
+          "vcd_candidates": 2430539,
+          "vcp_pruned": 51,
+          "vcp_requested": 51
+        },
+        "vcd_supported": 2430539,
+        "vcp_candidates": 51,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.4901161193847656e-08,
+        "vcp_verified": 51
+      },
+      {
+        "elapsed_seconds": 1.0750983249163255,
+        "evaluated_views": 24,
+        "input_count": 2640474,
+        "iteration": 2100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2640155,
+        "topology": {
+          "cleanup_pruned": 389,
+          "cloned": 746,
+          "input_count": 2640474,
+          "output_count": 2641331,
+          "prune_all_guard": false,
+          "split_children": 1104,
+          "split_parents": 552,
+          "vcd_candidates": 2472555,
+          "vcp_pruned": 52,
+          "vcp_requested": 52
+        },
+        "vcd_supported": 2472555,
+        "vcp_candidates": 52,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.9802322387695312e-08,
+        "vcp_verified": 52
+      },
+      {
+        "elapsed_seconds": 1.0755335070425645,
+        "evaluated_views": 24,
+        "input_count": 2641331,
+        "iteration": 2200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2640988,
+        "topology": {
+          "cleanup_pruned": 409,
+          "cloned": 725,
+          "input_count": 2641331,
+          "output_count": 2642119,
+          "prune_all_guard": false,
+          "split_children": 1034,
+          "split_parents": 517,
+          "vcd_candidates": 2421440,
+          "vcp_pruned": 45,
+          "vcp_requested": 45
+        },
+        "vcd_supported": 2421440,
+        "vcp_candidates": 45,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 45
+      },
+      {
+        "elapsed_seconds": 1.0858947809319943,
+        "evaluated_views": 24,
+        "input_count": 2642119,
+        "iteration": 2300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2641754,
+        "topology": {
+          "cleanup_pruned": 353,
+          "cloned": 647,
+          "input_count": 2642119,
+          "output_count": 2642794,
+          "prune_all_guard": false,
+          "split_children": 896,
+          "split_parents": 448,
+          "vcd_candidates": 2476963,
+          "vcp_pruned": 67,
+          "vcp_requested": 67
+        },
+        "vcd_supported": 2476963,
+        "vcp_candidates": 67,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.9802322387695312e-08,
+        "vcp_verified": 67
+      },
+      {
+        "elapsed_seconds": 1.0589450269471854,
+        "evaluated_views": 24,
+        "input_count": 2642794,
+        "iteration": 2400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2642414,
+        "topology": {
+          "cleanup_pruned": 294,
+          "cloned": 612,
+          "input_count": 2642794,
+          "output_count": 2643434,
+          "prune_all_guard": false,
+          "split_children": 766,
+          "split_parents": 383,
+          "vcd_candidates": 2428895,
+          "vcp_pruned": 61,
+          "vcp_requested": 61
+        },
+        "vcd_supported": 2428895,
+        "vcp_candidates": 61,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.725290298461914e-09,
+        "vcp_verified": 61
+      },
+      {
+        "elapsed_seconds": 1.0694217840209603,
+        "evaluated_views": 24,
+        "input_count": 2643434,
+        "iteration": 2500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2643037,
+        "topology": {
+          "cleanup_pruned": 296,
+          "cloned": 495,
+          "input_count": 2643434,
+          "output_count": 2643921,
+          "prune_all_guard": false,
+          "split_children": 692,
+          "split_parents": 346,
+          "vcd_candidates": 2419206,
+          "vcp_pruned": 58,
+          "vcp_requested": 58
+        },
+        "vcd_supported": 2419206,
+        "vcp_candidates": 58,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.2351741790771484e-08,
+        "vcp_verified": 58
+      },
+      {
+        "elapsed_seconds": 1.0707834559725598,
+        "evaluated_views": 24,
+        "input_count": 2643921,
+        "iteration": 2600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2643507,
+        "topology": {
+          "cleanup_pruned": 300,
+          "cloned": 488,
+          "input_count": 2643921,
+          "output_count": 2644369,
+          "prune_all_guard": false,
+          "split_children": 660,
+          "split_parents": 330,
+          "vcd_candidates": 2400825,
+          "vcp_pruned": 70,
+          "vcp_requested": 70
+        },
+        "vcd_supported": 2400825,
+        "vcp_candidates": 70,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.2351741790771484e-08,
+        "vcp_verified": 70
+      },
+      {
+        "elapsed_seconds": 1.0941356520634145,
+        "evaluated_views": 24,
+        "input_count": 2644369,
+        "iteration": 2700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2643958,
+        "topology": {
+          "cleanup_pruned": 345,
+          "cloned": 532,
+          "input_count": 2644369,
+          "output_count": 2644844,
+          "prune_all_guard": false,
+          "split_children": 702,
+          "split_parents": 351,
+          "vcd_candidates": 2433681,
+          "vcp_pruned": 63,
+          "vcp_requested": 63
+        },
+        "vcd_supported": 2433681,
+        "vcp_candidates": 63,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 5.587935447692871e-09,
+        "vcp_verified": 63
+      },
+      {
+        "elapsed_seconds": 1.074980794917792,
+        "evaluated_views": 24,
+        "input_count": 2644844,
+        "iteration": 2800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2644418,
+        "topology": {
+          "cleanup_pruned": 351,
+          "cloned": 441,
+          "input_count": 2644844,
+          "output_count": 2645190,
+          "prune_all_guard": false,
+          "split_children": 664,
+          "split_parents": 332,
+          "vcd_candidates": 2454846,
+          "vcp_pruned": 76,
+          "vcp_requested": 76
+        },
+        "vcd_supported": 2454846,
+        "vcp_candidates": 76,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 76
+      },
+      {
+        "elapsed_seconds": 1.073885072953999,
+        "evaluated_views": 24,
+        "input_count": 2645190,
+        "iteration": 2900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2644750,
+        "topology": {
+          "cleanup_pruned": 302,
+          "cloned": 397,
+          "input_count": 2645190,
+          "output_count": 2645471,
+          "prune_all_guard": false,
+          "split_children": 538,
+          "split_parents": 269,
+          "vcd_candidates": 2427530,
+          "vcp_pruned": 83,
+          "vcp_requested": 83
+        },
+        "vcd_supported": 2427530,
+        "vcp_candidates": 83,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.1175870895385742e-08,
+        "vcp_verified": 83
+      },
+      {
+        "elapsed_seconds": 1.0870279369410127,
+        "evaluated_views": 24,
+        "input_count": 2645471,
+        "iteration": 3000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2645021,
+        "topology": {
+          "cleanup_pruned": 332,
+          "cloned": 349,
+          "input_count": 2645471,
+          "output_count": 2645615,
+          "prune_all_guard": false,
+          "split_children": 434,
+          "split_parents": 217,
+          "vcd_candidates": 2384090,
+          "vcp_pruned": 90,
+          "vcp_requested": 90
+        },
+        "vcd_supported": 2384090,
+        "vcp_candidates": 90,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 90
+      },
+      {
+        "elapsed_seconds": 1.0612420010147616,
+        "evaluated_views": 24,
+        "input_count": 2645615,
+        "iteration": 3100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2645201,
+        "topology": {
+          "cleanup_pruned": 90790,
+          "cloned": 111,
+          "input_count": 2645615,
+          "output_count": 2555317,
+          "prune_all_guard": false,
+          "split_children": 762,
+          "split_parents": 381,
+          "vcd_candidates": 2169785,
+          "vcp_pruned": 0,
+          "vcp_requested": 0
+        },
+        "vcd_supported": 2169785,
+        "vcp_candidates": 87315,
+        "vcp_check": "rejected_training_loss_increase",
+        "vcp_max_train_loss_delta": 1.2293457984924316e-07,
+        "vcp_verified": 0
+      },
+      {
+        "elapsed_seconds": 1.0368350440403447,
+        "evaluated_views": 24,
+        "input_count": 2555317,
+        "iteration": 3200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2554904,
+        "topology": {
+          "cleanup_pruned": 1681,
+          "cloned": 310,
+          "input_count": 2555317,
+          "output_count": 2554557,
+          "prune_all_guard": false,
+          "split_children": 1222,
+          "split_parents": 611,
+          "vcd_candidates": 2253185,
+          "vcp_pruned": 0,
+          "vcp_requested": 0
+        },
+        "vcd_supported": 2253185,
+        "vcp_candidates": 2920,
+        "vcp_check": "rejected_training_loss_increase",
+        "vcp_max_train_loss_delta": 1.2665987014770508e-07,
+        "vcp_verified": 0
+      },
+      {
+        "elapsed_seconds": 1.0460322319995612,
+        "evaluated_views": 24,
+        "input_count": 2554557,
+        "iteration": 3300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2554100,
+        "topology": {
+          "cleanup_pruned": 796,
+          "cloned": 299,
+          "input_count": 2554557,
+          "output_count": 2551678,
+          "prune_all_guard": false,
+          "split_children": 838,
+          "split_parents": 419,
+          "vcd_candidates": 2237977,
+          "vcp_pruned": 2801,
+          "vcp_requested": 2801
+        },
+        "vcd_supported": 2237977,
+        "vcp_candidates": 2801,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.1734664440155029e-07,
+        "vcp_verified": 2801
+      },
+      {
+        "elapsed_seconds": 1.0356327509507537,
+        "evaluated_views": 24,
+        "input_count": 2551678,
+        "iteration": 3400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2551222,
+        "topology": {
+          "cleanup_pruned": 602,
+          "cloned": 310,
+          "input_count": 2551678,
+          "output_count": 2551083,
+          "prune_all_guard": false,
+          "split_children": 776,
+          "split_parents": 388,
+          "vcd_candidates": 2268763,
+          "vcp_pruned": 691,
+          "vcp_requested": 691
+        },
+        "vcd_supported": 2268763,
+        "vcp_candidates": 691,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 691
+      },
+      {
+        "elapsed_seconds": 1.0422076500253752,
+        "evaluated_views": 24,
+        "input_count": 2551083,
+        "iteration": 3500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2550609,
+        "topology": {
+          "cleanup_pruned": 467,
+          "cloned": 298,
+          "input_count": 2551083,
+          "output_count": 2550741,
+          "prune_all_guard": false,
+          "split_children": 626,
+          "split_parents": 313,
+          "vcd_candidates": 2214548,
+          "vcp_pruned": 486,
+          "vcp_requested": 486
+        },
+        "vcd_supported": 2214548,
+        "vcp_candidates": 486,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 486
+      },
+      {
+        "elapsed_seconds": 1.042381213977933,
+        "evaluated_views": 24,
+        "input_count": 2550741,
+        "iteration": 3600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2550265,
+        "topology": {
+          "cleanup_pruned": 423,
+          "cloned": 263,
+          "input_count": 2550741,
+          "output_count": 2550402,
+          "prune_all_guard": false,
+          "split_children": 530,
+          "split_parents": 265,
+          "vcd_candidates": 2238120,
+          "vcp_pruned": 444,
+          "vcp_requested": 444
+        },
+        "vcd_supported": 2238120,
+        "vcp_candidates": 444,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 444
+      },
+      {
+        "elapsed_seconds": 1.043070730054751,
+        "evaluated_views": 24,
+        "input_count": 2550402,
+        "iteration": 3700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2549925,
+        "topology": {
+          "cleanup_pruned": 401,
+          "cloned": 211,
+          "input_count": 2550402,
+          "output_count": 2550186,
+          "prune_all_guard": false,
+          "split_children": 496,
+          "split_parents": 248,
+          "vcd_candidates": 2284417,
+          "vcp_pruned": 274,
+          "vcp_requested": 274
+        },
+        "vcd_supported": 2284417,
+        "vcp_candidates": 274,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 274
+      },
+      {
+        "elapsed_seconds": 1.0305924719432369,
+        "evaluated_views": 24,
+        "input_count": 2550186,
+        "iteration": 3800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2549711,
+        "topology": {
+          "cleanup_pruned": 366,
+          "cloned": 225,
+          "input_count": 2550186,
+          "output_count": 2549944,
+          "prune_all_guard": false,
+          "split_children": 412,
+          "split_parents": 206,
+          "vcd_candidates": 2279075,
+          "vcp_pruned": 307,
+          "vcp_requested": 307
+        },
+        "vcd_supported": 2279075,
+        "vcp_candidates": 307,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 307
+      },
+      {
+        "elapsed_seconds": 1.0381267470074818,
+        "evaluated_views": 24,
+        "input_count": 2549944,
+        "iteration": 3900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2549451,
+        "topology": {
+          "cleanup_pruned": 369,
+          "cloned": 200,
+          "input_count": 2549944,
+          "output_count": 2549675,
+          "prune_all_guard": false,
+          "split_children": 372,
+          "split_parents": 186,
+          "vcd_candidates": 2258515,
+          "vcp_pruned": 286,
+          "vcp_requested": 286
+        },
+        "vcd_supported": 2258515,
+        "vcp_candidates": 286,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 286
+      },
+      {
+        "elapsed_seconds": 1.0524043159093708,
+        "evaluated_views": 24,
+        "input_count": 2549675,
+        "iteration": 4000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2549177,
+        "topology": {
+          "cleanup_pruned": 351,
+          "cloned": 180,
+          "input_count": 2549675,
+          "output_count": 2549389,
+          "prune_all_guard": false,
+          "split_children": 306,
+          "split_parents": 153,
+          "vcd_candidates": 2317405,
+          "vcp_pruned": 268,
+          "vcp_requested": 268
+        },
+        "vcd_supported": 2317405,
+        "vcp_candidates": 268,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.9802322387695312e-08,
+        "vcp_verified": 268
+      },
+      {
+        "elapsed_seconds": 1.0283071639714763,
+        "evaluated_views": 24,
+        "input_count": 2549389,
+        "iteration": 4100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2548879,
+        "topology": {
+          "cleanup_pruned": 323,
+          "cloned": 168,
+          "input_count": 2549389,
+          "output_count": 2549151,
+          "prune_all_guard": false,
+          "split_children": 324,
+          "split_parents": 162,
+          "vcd_candidates": 2300430,
+          "vcp_pruned": 245,
+          "vcp_requested": 245
+        },
+        "vcd_supported": 2300430,
+        "vcp_candidates": 245,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 5.122274160385132e-08,
+        "vcp_verified": 245
+      },
+      {
+        "elapsed_seconds": 1.0218524769879878,
+        "evaluated_views": 24,
+        "input_count": 2549151,
+        "iteration": 4200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2548630,
+        "topology": {
+          "cleanup_pruned": 294,
+          "cloned": 146,
+          "input_count": 2549151,
+          "output_count": 2548864,
+          "prune_all_guard": false,
+          "split_children": 296,
+          "split_parents": 148,
+          "vcd_candidates": 2258346,
+          "vcp_pruned": 287,
+          "vcp_requested": 287
+        },
+        "vcd_supported": 2258346,
+        "vcp_candidates": 287,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.166496753692627e-08,
+        "vcp_verified": 287
+      },
+      {
+        "elapsed_seconds": 1.027249957085587,
+        "evaluated_views": 24,
+        "input_count": 2548864,
+        "iteration": 4300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2548332,
+        "topology": {
+          "cleanup_pruned": 297,
+          "cloned": 161,
+          "input_count": 2548864,
+          "output_count": 2548639,
+          "prune_all_guard": false,
+          "split_children": 282,
+          "split_parents": 141,
+          "vcd_candidates": 2288511,
+          "vcp_pruned": 230,
+          "vcp_requested": 230
+        },
+        "vcd_supported": 2288511,
+        "vcp_candidates": 230,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 230
+      },
+      {
+        "elapsed_seconds": 1.0412265970371664,
+        "evaluated_views": 24,
+        "input_count": 2548639,
+        "iteration": 4400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2548103,
+        "topology": {
+          "cleanup_pruned": 312,
+          "cloned": 136,
+          "input_count": 2548639,
+          "output_count": 2548264,
+          "prune_all_guard": false,
+          "split_children": 254,
+          "split_parents": 127,
+          "vcd_candidates": 2237174,
+          "vcp_pruned": 326,
+          "vcp_requested": 326
+        },
+        "vcd_supported": 2237174,
+        "vcp_candidates": 326,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 326
+      },
+      {
+        "elapsed_seconds": 1.0438369290204719,
+        "evaluated_views": 24,
+        "input_count": 2548264,
+        "iteration": 4500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2547730,
+        "topology": {
+          "cleanup_pruned": 287,
+          "cloned": 137,
+          "input_count": 2548264,
+          "output_count": 2548015,
+          "prune_all_guard": false,
+          "split_children": 266,
+          "split_parents": 133,
+          "vcd_candidates": 2307444,
+          "vcp_pruned": 232,
+          "vcp_requested": 232
+        },
+        "vcd_supported": 2307444,
+        "vcp_candidates": 232,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 232
+      },
+      {
+        "elapsed_seconds": 1.0236111449776217,
+        "evaluated_views": 24,
+        "input_count": 2548015,
+        "iteration": 4600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2547478,
+        "topology": {
+          "cleanup_pruned": 336,
+          "cloned": 121,
+          "input_count": 2548015,
+          "output_count": 2547714,
+          "prune_all_guard": false,
+          "split_children": 306,
+          "split_parents": 153,
+          "vcd_candidates": 2285914,
+          "vcp_pruned": 239,
+          "vcp_requested": 239
+        },
+        "vcd_supported": 2285914,
+        "vcp_candidates": 239,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.166496753692627e-08,
+        "vcp_verified": 239
+      },
+      {
+        "elapsed_seconds": 1.0383747899904847,
+        "evaluated_views": 24,
+        "input_count": 2547714,
+        "iteration": 4700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2547166,
+        "topology": {
+          "cleanup_pruned": 271,
+          "cloned": 137,
+          "input_count": 2547714,
+          "output_count": 2547381,
+          "prune_all_guard": false,
+          "split_children": 250,
+          "split_parents": 125,
+          "vcd_candidates": 2303317,
+          "vcp_pruned": 324,
+          "vcp_requested": 324
+        },
+        "vcd_supported": 2303317,
+        "vcp_candidates": 324,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.9802322387695312e-08,
+        "vcp_verified": 324
+      },
+      {
+        "elapsed_seconds": 1.0298092139419168,
+        "evaluated_views": 24,
+        "input_count": 2547381,
+        "iteration": 4800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2546822,
+        "topology": {
+          "cleanup_pruned": 315,
+          "cloned": 113,
+          "input_count": 2547381,
+          "output_count": 2547017,
+          "prune_all_guard": false,
+          "split_children": 254,
+          "split_parents": 127,
+          "vcd_candidates": 2233761,
+          "vcp_pruned": 289,
+          "vcp_requested": 289
+        },
+        "vcd_supported": 2233761,
+        "vcp_candidates": 289,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.3283064365386963e-08,
+        "vcp_verified": 289
+      },
+      {
+        "elapsed_seconds": 1.0339814450126141,
+        "evaluated_views": 24,
+        "input_count": 2547017,
+        "iteration": 4900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2546458,
+        "topology": {
+          "cleanup_pruned": 280,
+          "cloned": 96,
+          "input_count": 2547017,
+          "output_count": 2546695,
+          "prune_all_guard": false,
+          "split_children": 262,
+          "split_parents": 131,
+          "vcd_candidates": 2282446,
+          "vcp_pruned": 269,
+          "vcp_requested": 269
+        },
+        "vcd_supported": 2282446,
+        "vcp_candidates": 269,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 269
+      },
+      {
+        "elapsed_seconds": 1.028817696031183,
+        "evaluated_views": 24,
+        "input_count": 2546695,
+        "iteration": 5000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2546125,
+        "topology": {
+          "cleanup_pruned": 304,
+          "cloned": 105,
+          "input_count": 2546695,
+          "output_count": 2546304,
+          "prune_all_guard": false,
+          "split_children": 186,
+          "split_parents": 93,
+          "vcd_candidates": 2273761,
+          "vcp_pruned": 285,
+          "vcp_requested": 285
+        },
+        "vcd_supported": 2273761,
+        "vcp_candidates": 285,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.210719347000122e-08,
+        "vcp_verified": 285
+      },
+      {
+        "elapsed_seconds": 1.0328267799923196,
+        "evaluated_views": 24,
+        "input_count": 2546304,
+        "iteration": 5100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2545734,
+        "topology": {
+          "cleanup_pruned": 296,
+          "cloned": 86,
+          "input_count": 2546304,
+          "output_count": 2545936,
+          "prune_all_guard": false,
+          "split_children": 234,
+          "split_parents": 117,
+          "vcd_candidates": 2317018,
+          "vcp_pruned": 275,
+          "vcp_requested": 275
+        },
+        "vcd_supported": 2317018,
+        "vcp_candidates": 275,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.862645149230957e-08,
+        "vcp_verified": 275
+      },
+      {
+        "elapsed_seconds": 1.008247880032286,
+        "evaluated_views": 24,
+        "input_count": 2545936,
+        "iteration": 5200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2545356,
+        "topology": {
+          "cleanup_pruned": 318,
+          "cloned": 97,
+          "input_count": 2545936,
+          "output_count": 2545461,
+          "prune_all_guard": false,
+          "split_children": 184,
+          "split_parents": 92,
+          "vcd_candidates": 2286405,
+          "vcp_pruned": 346,
+          "vcp_requested": 346
+        },
+        "vcd_supported": 2286405,
+        "vcp_candidates": 346,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.514570951461792e-08,
+        "vcp_verified": 346
+      },
+      {
+        "elapsed_seconds": 1.036254149978049,
+        "evaluated_views": 24,
+        "input_count": 2545461,
+        "iteration": 5300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2544874,
+        "topology": {
+          "cleanup_pruned": 309,
+          "cloned": 78,
+          "input_count": 2545461,
+          "output_count": 2544991,
+          "prune_all_guard": false,
+          "split_children": 202,
+          "split_parents": 101,
+          "vcd_candidates": 2281069,
+          "vcp_pruned": 340,
+          "vcp_requested": 340
+        },
+        "vcd_supported": 2281069,
+        "vcp_candidates": 340,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7008354663848877e-08,
+        "vcp_verified": 340
+      },
+      {
+        "elapsed_seconds": 1.0324316329788417,
+        "evaluated_views": 24,
+        "input_count": 2544991,
+        "iteration": 5400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2544412,
+        "topology": {
+          "cleanup_pruned": 314,
+          "cloned": 92,
+          "input_count": 2544991,
+          "output_count": 2544526,
+          "prune_all_guard": false,
+          "split_children": 202,
+          "split_parents": 101,
+          "vcd_candidates": 2253804,
+          "vcp_pruned": 344,
+          "vcp_requested": 344
+        },
+        "vcd_supported": 2253804,
+        "vcp_candidates": 344,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 344
+      },
+      {
+        "elapsed_seconds": 1.0339022430125624,
+        "evaluated_views": 24,
+        "input_count": 2544526,
+        "iteration": 5500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2543930,
+        "topology": {
+          "cleanup_pruned": 319,
+          "cloned": 67,
+          "input_count": 2544526,
+          "output_count": 2544025,
+          "prune_all_guard": false,
+          "split_children": 198,
+          "split_parents": 99,
+          "vcd_candidates": 2279441,
+          "vcp_pruned": 348,
+          "vcp_requested": 348
+        },
+        "vcd_supported": 2279441,
+        "vcp_candidates": 348,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7939677238464355e-08,
+        "vcp_verified": 348
+      },
+      {
+        "elapsed_seconds": 1.028547699097544,
+        "evaluated_views": 24,
+        "input_count": 2544025,
+        "iteration": 5600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2543431,
+        "topology": {
+          "cleanup_pruned": 340,
+          "cloned": 67,
+          "input_count": 2544025,
+          "output_count": 2543502,
+          "prune_all_guard": false,
+          "split_children": 220,
+          "split_parents": 110,
+          "vcd_candidates": 2262388,
+          "vcp_pruned": 360,
+          "vcp_requested": 360
+        },
+        "vcd_supported": 2262388,
+        "vcp_candidates": 360,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 360
+      },
+      {
+        "elapsed_seconds": 1.034335116040893,
+        "evaluated_views": 24,
+        "input_count": 2543502,
+        "iteration": 5700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2542907,
+        "topology": {
+          "cleanup_pruned": 310,
+          "cloned": 83,
+          "input_count": 2543502,
+          "output_count": 2543029,
+          "prune_all_guard": false,
+          "split_children": 228,
+          "split_parents": 114,
+          "vcd_candidates": 2251340,
+          "vcp_pruned": 360,
+          "vcp_requested": 360
+        },
+        "vcd_supported": 2251340,
+        "vcp_candidates": 360,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.1420419216156006e-08,
+        "vcp_verified": 360
+      },
+      {
+        "elapsed_seconds": 1.029639389947988,
+        "evaluated_views": 24,
+        "input_count": 2543029,
+        "iteration": 5800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2542434,
+        "topology": {
+          "cleanup_pruned": 374,
+          "cloned": 82,
+          "input_count": 2543029,
+          "output_count": 2542446,
+          "prune_all_guard": false,
+          "split_children": 184,
+          "split_parents": 92,
+          "vcd_candidates": 2246473,
+          "vcp_pruned": 383,
+          "vcp_requested": 383
+        },
+        "vcd_supported": 2246473,
+        "vcp_candidates": 383,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 383
+      },
+      {
+        "elapsed_seconds": 1.0260016849497333,
+        "evaluated_views": 24,
+        "input_count": 2542446,
+        "iteration": 5900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2541837,
+        "topology": {
+          "cleanup_pruned": 303,
+          "cloned": 58,
+          "input_count": 2542446,
+          "output_count": 2541947,
+          "prune_all_guard": false,
+          "split_children": 206,
+          "split_parents": 103,
+          "vcd_candidates": 2285246,
+          "vcp_pruned": 357,
+          "vcp_requested": 357
+        },
+        "vcd_supported": 2285246,
+        "vcp_candidates": 357,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7939677238464355e-08,
+        "vcp_verified": 357
+      },
+      {
+        "elapsed_seconds": 1.0274368919199333,
+        "evaluated_views": 24,
+        "input_count": 2541947,
+        "iteration": 6000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2541336,
+        "topology": {
+          "cleanup_pruned": 305,
+          "cloned": 68,
+          "input_count": 2541947,
+          "output_count": 2541422,
+          "prune_all_guard": false,
+          "split_children": 166,
+          "split_parents": 83,
+          "vcd_candidates": 2308140,
+          "vcp_pruned": 371,
+          "vcp_requested": 371
+        },
+        "vcd_supported": 2308140,
+        "vcp_candidates": 371,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 371
+      },
+      {
+        "elapsed_seconds": 1.0206894469447434,
+        "evaluated_views": 24,
+        "input_count": 2541422,
+        "iteration": 6100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2540866,
+        "topology": {
+          "cleanup_pruned": 7218,
+          "cloned": 59,
+          "input_count": 2541422,
+          "output_count": 2444855,
+          "prune_all_guard": false,
+          "split_children": 500,
+          "split_parents": 250,
+          "vcd_candidates": 2157003,
+          "vcp_pruned": 89658,
+          "vcp_requested": 89658
+        },
+        "vcd_supported": 2157003,
+        "vcp_candidates": 89658,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 7.078051567077637e-08,
+        "vcp_verified": 89658
+      },
+      {
+        "elapsed_seconds": 0.9983192039653659,
+        "evaluated_views": 24,
+        "input_count": 2444855,
+        "iteration": 6200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2444290,
+        "topology": {
+          "cleanup_pruned": 1005,
+          "cloned": 135,
+          "input_count": 2444855,
+          "output_count": 2442389,
+          "prune_all_guard": false,
+          "split_children": 584,
+          "split_parents": 292,
+          "vcd_candidates": 2200674,
+          "vcp_pruned": 1888,
+          "vcp_requested": 1888
+        },
+        "vcd_supported": 2200674,
+        "vcp_candidates": 1888,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 4.563480615615845e-08,
+        "vcp_verified": 1888
+      },
+      {
+        "elapsed_seconds": 0.994500354048796,
+        "evaluated_views": 24,
+        "input_count": 2442389,
+        "iteration": 6300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2441826,
+        "topology": {
+          "cleanup_pruned": 554,
+          "cloned": 117,
+          "input_count": 2442389,
+          "output_count": 2440879,
+          "prune_all_guard": false,
+          "split_children": 418,
+          "split_parents": 209,
+          "vcd_candidates": 2151789,
+          "vcp_pruned": 1282,
+          "vcp_requested": 1282
+        },
+        "vcd_supported": 2151789,
+        "vcp_candidates": 1282,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.073364496231079e-08,
+        "vcp_verified": 1282
+      },
+      {
+        "elapsed_seconds": 0.9977855440229177,
+        "evaluated_views": 24,
+        "input_count": 2440879,
+        "iteration": 6400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2440304,
+        "topology": {
+          "cleanup_pruned": 390,
+          "cloned": 94,
+          "input_count": 2440879,
+          "output_count": 2440031,
+          "prune_all_guard": false,
+          "split_children": 280,
+          "split_parents": 140,
+          "vcd_candidates": 2183964,
+          "vcp_pruned": 692,
+          "vcp_requested": 692
+        },
+        "vcd_supported": 2183964,
+        "vcp_candidates": 692,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7939677238464355e-08,
+        "vcp_verified": 692
+      },
+      {
+        "elapsed_seconds": 1.0041498049395159,
+        "evaluated_views": 24,
+        "input_count": 2440031,
+        "iteration": 6500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2439458,
+        "topology": {
+          "cleanup_pruned": 278,
+          "cloned": 83,
+          "input_count": 2440031,
+          "output_count": 2439314,
+          "prune_all_guard": false,
+          "split_children": 206,
+          "split_parents": 103,
+          "vcd_candidates": 2220442,
+          "vcp_pruned": 625,
+          "vcp_requested": 625
+        },
+        "vcd_supported": 2220442,
+        "vcp_candidates": 625,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 625
+      },
+      {
+        "elapsed_seconds": 0.9855737279867753,
+        "evaluated_views": 24,
+        "input_count": 2439314,
+        "iteration": 6600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2438735,
+        "topology": {
+          "cleanup_pruned": 267,
+          "cloned": 100,
+          "input_count": 2439314,
+          "output_count": 2438671,
+          "prune_all_guard": false,
+          "split_children": 204,
+          "split_parents": 102,
+          "vcd_candidates": 2202093,
+          "vcp_pruned": 578,
+          "vcp_requested": 578
+        },
+        "vcd_supported": 2202093,
+        "vcp_candidates": 578,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.210719347000122e-08,
+        "vcp_verified": 578
+      },
+      {
+        "elapsed_seconds": 1.0048411450115964,
+        "evaluated_views": 24,
+        "input_count": 2438671,
+        "iteration": 6700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2438086,
+        "topology": {
+          "cleanup_pruned": 226,
+          "cloned": 71,
+          "input_count": 2438671,
+          "output_count": 2438159,
+          "prune_all_guard": false,
+          "split_children": 222,
+          "split_parents": 111,
+          "vcd_candidates": 2190987,
+          "vcp_pruned": 468,
+          "vcp_requested": 468
+        },
+        "vcd_supported": 2190987,
+        "vcp_candidates": 468,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 468
+      },
+      {
+        "elapsed_seconds": 0.9911774670472369,
+        "evaluated_views": 24,
+        "input_count": 2438159,
+        "iteration": 6800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2437571,
+        "topology": {
+          "cleanup_pruned": 195,
+          "cloned": 77,
+          "input_count": 2438159,
+          "output_count": 2437812,
+          "prune_all_guard": false,
+          "split_children": 184,
+          "split_parents": 92,
+          "vcd_candidates": 2209055,
+          "vcp_pruned": 321,
+          "vcp_requested": 321
+        },
+        "vcd_supported": 2209055,
+        "vcp_candidates": 321,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.6763806343078613e-08,
+        "vcp_verified": 321
+      },
+      {
+        "elapsed_seconds": 0.9907930619083345,
+        "evaluated_views": 24,
+        "input_count": 2437812,
+        "iteration": 6900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2437220,
+        "topology": {
+          "cleanup_pruned": 209,
+          "cloned": 66,
+          "input_count": 2437812,
+          "output_count": 2437263,
+          "prune_all_guard": false,
+          "split_children": 162,
+          "split_parents": 81,
+          "vcd_candidates": 2208978,
+          "vcp_pruned": 487,
+          "vcp_requested": 487
+        },
+        "vcd_supported": 2208978,
+        "vcp_candidates": 487,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.8870999813079834e-08,
+        "vcp_verified": 487
+      },
+      {
+        "elapsed_seconds": 0.9977955049835145,
+        "evaluated_views": 24,
+        "input_count": 2437263,
+        "iteration": 7000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2436675,
+        "topology": {
+          "cleanup_pruned": 167,
+          "cloned": 72,
+          "input_count": 2437263,
+          "output_count": 2436833,
+          "prune_all_guard": false,
+          "split_children": 172,
+          "split_parents": 86,
+          "vcd_candidates": 2212073,
+          "vcp_pruned": 421,
+          "vcp_requested": 421
+        },
+        "vcd_supported": 2212073,
+        "vcp_candidates": 421,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.8870999813079834e-08,
+        "vcp_verified": 421
+      },
+      {
+        "elapsed_seconds": 1.000378064927645,
+        "evaluated_views": 24,
+        "input_count": 2436833,
+        "iteration": 7100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2436245,
+        "topology": {
+          "cleanup_pruned": 165,
+          "cloned": 59,
+          "input_count": 2436833,
+          "output_count": 2436501,
+          "prune_all_guard": false,
+          "split_children": 194,
+          "split_parents": 97,
+          "vcd_candidates": 2225635,
+          "vcp_pruned": 323,
+          "vcp_requested": 323
+        },
+        "vcd_supported": 2225635,
+        "vcp_candidates": 323,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.9802322387695312e-08,
+        "vcp_verified": 323
+      },
+      {
+        "elapsed_seconds": 0.9960440889699385,
+        "evaluated_views": 24,
+        "input_count": 2436501,
+        "iteration": 7200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2435897,
+        "topology": {
+          "cleanup_pruned": 165,
+          "cloned": 59,
+          "input_count": 2436501,
+          "output_count": 2436108,
+          "prune_all_guard": false,
+          "split_children": 144,
+          "split_parents": 72,
+          "vcd_candidates": 2213889,
+          "vcp_pruned": 359,
+          "vcp_requested": 359
+        },
+        "vcd_supported": 2213889,
+        "vcp_candidates": 359,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7008354663848877e-08,
+        "vcp_verified": 359
+      },
+      {
+        "elapsed_seconds": 0.9991965499939397,
+        "evaluated_views": 24,
+        "input_count": 2436108,
+        "iteration": 7300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2435511,
+        "topology": {
+          "cleanup_pruned": 206,
+          "cloned": 60,
+          "input_count": 2436108,
+          "output_count": 2435598,
+          "prune_all_guard": false,
+          "split_children": 124,
+          "split_parents": 62,
+          "vcd_candidates": 2240759,
+          "vcp_pruned": 426,
+          "vcp_requested": 426
+        },
+        "vcd_supported": 2240759,
+        "vcp_candidates": 426,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 426
+      },
+      {
+        "elapsed_seconds": 0.993821476935409,
+        "evaluated_views": 24,
+        "input_count": 2435598,
+        "iteration": 7400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2434992,
+        "topology": {
+          "cleanup_pruned": 188,
+          "cloned": 64,
+          "input_count": 2435598,
+          "output_count": 2435134,
+          "prune_all_guard": false,
+          "split_children": 162,
+          "split_parents": 81,
+          "vcd_candidates": 2178365,
+          "vcp_pruned": 421,
+          "vcp_requested": 421
+        },
+        "vcd_supported": 2178365,
+        "vcp_candidates": 421,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.166496753692627e-08,
+        "vcp_verified": 421
+      },
+      {
+        "elapsed_seconds": 0.9929747820133343,
+        "evaluated_views": 24,
+        "input_count": 2435134,
+        "iteration": 7500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2434509,
+        "topology": {
+          "cleanup_pruned": 184,
+          "cloned": 45,
+          "input_count": 2435134,
+          "output_count": 2434727,
+          "prune_all_guard": false,
+          "split_children": 192,
+          "split_parents": 96,
+          "vcd_candidates": 2200739,
+          "vcp_pruned": 364,
+          "vcp_requested": 364
+        },
+        "vcd_supported": 2200739,
+        "vcp_candidates": 364,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.4458935260772705e-08,
+        "vcp_verified": 364
+      },
+      {
+        "elapsed_seconds": 0.9916693869745359,
+        "evaluated_views": 24,
+        "input_count": 2434727,
+        "iteration": 7600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2434103,
+        "topology": {
+          "cleanup_pruned": 182,
+          "cloned": 50,
+          "input_count": 2434727,
+          "output_count": 2434311,
+          "prune_all_guard": false,
+          "split_children": 156,
+          "split_parents": 78,
+          "vcd_candidates": 2200637,
+          "vcp_pruned": 362,
+          "vcp_requested": 362
+        },
+        "vcd_supported": 2200637,
+        "vcp_candidates": 362,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.6763806343078613e-08,
+        "vcp_verified": 362
+      },
+      {
+        "elapsed_seconds": 0.9891434260644019,
+        "evaluated_views": 24,
+        "input_count": 2434311,
+        "iteration": 7700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2433679,
+        "topology": {
+          "cleanup_pruned": 193,
+          "cloned": 51,
+          "input_count": 2434311,
+          "output_count": 2433836,
+          "prune_all_guard": false,
+          "split_children": 130,
+          "split_parents": 65,
+          "vcd_candidates": 2193951,
+          "vcp_pruned": 398,
+          "vcp_requested": 398
+        },
+        "vcd_supported": 2193951,
+        "vcp_candidates": 398,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.632158041000366e-08,
+        "vcp_verified": 398
+      },
+      {
+        "elapsed_seconds": 0.989513176959008,
+        "evaluated_views": 24,
+        "input_count": 2433836,
+        "iteration": 7800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2433203,
+        "topology": {
+          "cleanup_pruned": 185,
+          "cloned": 45,
+          "input_count": 2433836,
+          "output_count": 2433402,
+          "prune_all_guard": false,
+          "split_children": 142,
+          "split_parents": 71,
+          "vcd_candidates": 2236491,
+          "vcp_pruned": 365,
+          "vcp_requested": 365
+        },
+        "vcd_supported": 2236491,
+        "vcp_candidates": 365,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 365
+      },
+      {
+        "elapsed_seconds": 0.9866140939993784,
+        "evaluated_views": 24,
+        "input_count": 2433402,
+        "iteration": 7900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2432773,
+        "topology": {
+          "cleanup_pruned": 182,
+          "cloned": 52,
+          "input_count": 2433402,
+          "output_count": 2432991,
+          "prune_all_guard": false,
+          "split_children": 112,
+          "split_parents": 56,
+          "vcd_candidates": 2233486,
+          "vcp_pruned": 337,
+          "vcp_requested": 337
+        },
+        "vcd_supported": 2233486,
+        "vcp_candidates": 337,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.3283064365386963e-08,
+        "vcp_verified": 337
+      },
+      {
+        "elapsed_seconds": 0.9987030079355463,
+        "evaluated_views": 24,
+        "input_count": 2432991,
+        "iteration": 8000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2432361,
+        "topology": {
+          "cleanup_pruned": 197,
+          "cloned": 38,
+          "input_count": 2432991,
+          "output_count": 2432411,
+          "prune_all_guard": false,
+          "split_children": 112,
+          "split_parents": 56,
+          "vcd_candidates": 2182152,
+          "vcp_pruned": 477,
+          "vcp_requested": 477
+        },
+        "vcd_supported": 2182152,
+        "vcp_candidates": 477,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 477
+      },
+      {
+        "elapsed_seconds": 0.9953583779279143,
+        "evaluated_views": 24,
+        "input_count": 2432411,
+        "iteration": 8100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2431777,
+        "topology": {
+          "cleanup_pruned": 214,
+          "cloned": 42,
+          "input_count": 2432411,
+          "output_count": 2431854,
+          "prune_all_guard": false,
+          "split_children": 146,
+          "split_parents": 73,
+          "vcd_candidates": 2204921,
+          "vcp_pruned": 458,
+          "vcp_requested": 458
+        },
+        "vcd_supported": 2204921,
+        "vcp_candidates": 458,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.3283064365386963e-08,
+        "vcp_verified": 458
+      },
+      {
+        "elapsed_seconds": 0.9892326720291749,
+        "evaluated_views": 24,
+        "input_count": 2431854,
+        "iteration": 8200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2431209,
+        "topology": {
+          "cleanup_pruned": 165,
+          "cloned": 42,
+          "input_count": 2431854,
+          "output_count": 2431383,
+          "prune_all_guard": false,
+          "split_children": 102,
+          "split_parents": 51,
+          "vcd_candidates": 2216291,
+          "vcp_pruned": 399,
+          "vcp_requested": 399
+        },
+        "vcd_supported": 2216291,
+        "vcp_candidates": 399,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.3969838619232178e-08,
+        "vcp_verified": 399
+      },
+      {
+        "elapsed_seconds": 0.9814831160474569,
+        "evaluated_views": 24,
+        "input_count": 2431383,
+        "iteration": 8300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2430742,
+        "topology": {
+          "cleanup_pruned": 216,
+          "cloned": 32,
+          "input_count": 2431383,
+          "output_count": 2430853,
+          "prune_all_guard": false,
+          "split_children": 112,
+          "split_parents": 56,
+          "vcd_candidates": 2208980,
+          "vcp_pruned": 402,
+          "vcp_requested": 402
+        },
+        "vcd_supported": 2208980,
+        "vcp_candidates": 402,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7008354663848877e-08,
+        "vcp_verified": 402
+      },
+      {
+        "elapsed_seconds": 1.1346166270086542,
+        "evaluated_views": 24,
+        "input_count": 2430853,
+        "iteration": 8400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2430198,
+        "topology": {
+          "cleanup_pruned": 192,
+          "cloned": 25,
+          "input_count": 2430853,
+          "output_count": 2430287,
+          "prune_all_guard": false,
+          "split_children": 124,
+          "split_parents": 62,
+          "vcd_candidates": 2195520,
+          "vcp_pruned": 461,
+          "vcp_requested": 461
+        },
+        "vcd_supported": 2195520,
+        "vcp_candidates": 461,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.514570951461792e-08,
+        "vcp_verified": 461
+      },
+      {
+        "elapsed_seconds": 0.9913290739059448,
+        "evaluated_views": 24,
+        "input_count": 2430287,
+        "iteration": 8500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2429631,
+        "topology": {
+          "cleanup_pruned": 212,
+          "cloned": 44,
+          "input_count": 2430287,
+          "output_count": 2429744,
+          "prune_all_guard": false,
+          "split_children": 102,
+          "split_parents": 51,
+          "vcd_candidates": 2202826,
+          "vcp_pruned": 426,
+          "vcp_requested": 426
+        },
+        "vcd_supported": 2202826,
+        "vcp_candidates": 426,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 426
+      },
+      {
+        "elapsed_seconds": 0.9866323320893571,
+        "evaluated_views": 24,
+        "input_count": 2429744,
+        "iteration": 8600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2429082,
+        "topology": {
+          "cleanup_pruned": 225,
+          "cloned": 40,
+          "input_count": 2429744,
+          "output_count": 2429184,
+          "prune_all_guard": false,
+          "split_children": 120,
+          "split_parents": 60,
+          "vcd_candidates": 2202862,
+          "vcp_pruned": 435,
+          "vcp_requested": 435
+        },
+        "vcd_supported": 2202862,
+        "vcp_candidates": 435,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.3527612686157227e-08,
+        "vcp_verified": 435
+      },
+      {
+        "elapsed_seconds": 0.9862842650618404,
+        "evaluated_views": 24,
+        "input_count": 2429184,
+        "iteration": 8700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2428523,
+        "topology": {
+          "cleanup_pruned": 219,
+          "cloned": 39,
+          "input_count": 2429184,
+          "output_count": 2428443,
+          "prune_all_guard": false,
+          "split_children": 120,
+          "split_parents": 60,
+          "vcd_candidates": 2176011,
+          "vcp_pruned": 621,
+          "vcp_requested": 621
+        },
+        "vcd_supported": 2176011,
+        "vcp_candidates": 621,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7008354663848877e-08,
+        "vcp_verified": 621
+      },
+      {
+        "elapsed_seconds": 0.9965088709723204,
+        "evaluated_views": 24,
+        "input_count": 2428443,
+        "iteration": 8800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2427784,
+        "topology": {
+          "cleanup_pruned": 217,
+          "cloned": 29,
+          "input_count": 2428443,
+          "output_count": 2427775,
+          "prune_all_guard": false,
+          "split_children": 102,
+          "split_parents": 51,
+          "vcd_candidates": 2193381,
+          "vcp_pruned": 531,
+          "vcp_requested": 531
+        },
+        "vcd_supported": 2193381,
+        "vcp_candidates": 531,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.7008354663848877e-08,
+        "vcp_verified": 531
+      },
+      {
+        "elapsed_seconds": 0.9922009839210659,
+        "evaluated_views": 24,
+        "input_count": 2427775,
+        "iteration": 8900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2427104,
+        "topology": {
+          "cleanup_pruned": 212,
+          "cloned": 32,
+          "input_count": 2427775,
+          "output_count": 2427149,
+          "prune_all_guard": false,
+          "split_children": 132,
+          "split_parents": 66,
+          "vcd_candidates": 2203814,
+          "vcp_pruned": 512,
+          "vcp_requested": 512
+        },
+        "vcd_supported": 2203814,
+        "vcp_candidates": 512,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.421438694000244e-08,
+        "vcp_verified": 512
+      },
+      {
+        "elapsed_seconds": 0.9904703779611737,
+        "evaluated_views": 24,
+        "input_count": 2427149,
+        "iteration": 9000,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2426477,
+        "topology": {
+          "cleanup_pruned": 212,
+          "cloned": 24,
+          "input_count": 2427149,
+          "output_count": 2426522,
+          "prune_all_guard": false,
+          "split_children": 114,
+          "split_parents": 57,
+          "vcd_candidates": 2179658,
+          "vcp_pruned": 496,
+          "vcp_requested": 496
+        },
+        "vcd_supported": 2179658,
+        "vcp_candidates": 496,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.1175870895385742e-08,
+        "vcp_verified": 496
+      },
+      {
+        "elapsed_seconds": 0.9874389959732071,
+        "evaluated_views": 24,
+        "input_count": 2426522,
+        "iteration": 9100,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2425918,
+        "topology": {
+          "cleanup_pruned": 7940,
+          "cloned": 43,
+          "input_count": 2426522,
+          "output_count": 2336890,
+          "prune_all_guard": false,
+          "split_children": 446,
+          "split_parents": 223,
+          "vcd_candidates": 2059659,
+          "vcp_pruned": 81958,
+          "vcp_requested": 81958
+        },
+        "vcd_supported": 2059659,
+        "vcp_candidates": 81958,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 7.82310962677002e-08,
+        "vcp_verified": 81958
+      },
+      {
+        "elapsed_seconds": 0.9417793559841812,
+        "evaluated_views": 24,
+        "input_count": 2336890,
+        "iteration": 9200,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2336282,
+        "topology": {
+          "cleanup_pruned": 994,
+          "cloned": 107,
+          "input_count": 2336890,
+          "output_count": 2334210,
+          "prune_all_guard": false,
+          "split_children": 428,
+          "split_parents": 214,
+          "vcd_candidates": 2048241,
+          "vcp_pruned": 2007,
+          "vcp_requested": 2007
+        },
+        "vcd_supported": 2048241,
+        "vcp_candidates": 2007,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 4.6566128730773926e-08,
+        "vcp_verified": 2007
+      },
+      {
+        "elapsed_seconds": 0.9667201120173559,
+        "evaluated_views": 24,
+        "input_count": 2334210,
+        "iteration": 9300,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2333584,
+        "topology": {
+          "cleanup_pruned": 539,
+          "cloned": 75,
+          "input_count": 2334210,
+          "output_count": 2332852,
+          "prune_all_guard": false,
+          "split_children": 282,
+          "split_parents": 141,
+          "vcd_candidates": 2068819,
+          "vcp_pruned": 1035,
+          "vcp_requested": 1035
+        },
+        "vcd_supported": 2068819,
+        "vcp_candidates": 1035,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.3527612686157227e-08,
+        "vcp_verified": 1035
+      },
+      {
+        "elapsed_seconds": 0.9605140120256692,
+        "evaluated_views": 24,
+        "input_count": 2332852,
+        "iteration": 9400,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2332203,
+        "topology": {
+          "cleanup_pruned": 261,
+          "cloned": 70,
+          "input_count": 2332852,
+          "output_count": 2331990,
+          "prune_all_guard": false,
+          "split_children": 194,
+          "split_parents": 97,
+          "vcd_candidates": 2083279,
+          "vcp_pruned": 768,
+          "vcp_requested": 768
+        },
+        "vcd_supported": 2083279,
+        "vcp_candidates": 768,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.2351741790771484e-08,
+        "vcp_verified": 768
+      },
+      {
+        "elapsed_seconds": 0.9560654800152406,
+        "evaluated_views": 24,
+        "input_count": 2331990,
+        "iteration": 9500,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2331351,
+        "topology": {
+          "cleanup_pruned": 208,
+          "cloned": 63,
+          "input_count": 2331990,
+          "output_count": 2331319,
+          "prune_all_guard": false,
+          "split_children": 204,
+          "split_parents": 102,
+          "vcd_candidates": 2107399,
+          "vcp_pruned": 628,
+          "vcp_requested": 628
+        },
+        "vcd_supported": 2107399,
+        "vcp_candidates": 628,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 3.073364496231079e-08,
+        "vcp_verified": 628
+      },
+      {
+        "elapsed_seconds": 0.9556161040673032,
+        "evaluated_views": 24,
+        "input_count": 2331319,
+        "iteration": 9600,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2330667,
+        "topology": {
+          "cleanup_pruned": 181,
+          "cloned": 62,
+          "input_count": 2331319,
+          "output_count": 2330724,
+          "prune_all_guard": false,
+          "split_children": 154,
+          "split_parents": 77,
+          "vcd_candidates": 2081470,
+          "vcp_pruned": 553,
+          "vcp_requested": 553
+        },
+        "vcd_supported": 2081470,
+        "vcp_candidates": 553,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.9802322387695312e-08,
+        "vcp_verified": 553
+      },
+      {
+        "elapsed_seconds": 0.9662860400276259,
+        "evaluated_views": 24,
+        "input_count": 2330724,
+        "iteration": 9700,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2330074,
+        "topology": {
+          "cleanup_pruned": 147,
+          "cloned": 59,
+          "input_count": 2330724,
+          "output_count": 2330249,
+          "prune_all_guard": false,
+          "split_children": 160,
+          "split_parents": 80,
+          "vcd_candidates": 2119576,
+          "vcp_pruned": 467,
+          "vcp_requested": 467
+        },
+        "vcd_supported": 2119576,
+        "vcp_candidates": 467,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.60770320892334e-08,
+        "vcp_verified": 467
+      },
+      {
+        "elapsed_seconds": 0.9476129550021142,
+        "evaluated_views": 24,
+        "input_count": 2330249,
+        "iteration": 9800,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2329587,
+        "topology": {
+          "cleanup_pruned": 129,
+          "cloned": 47,
+          "input_count": 2330249,
+          "output_count": 2329741,
+          "prune_all_guard": false,
+          "split_children": 144,
+          "split_parents": 72,
+          "vcd_candidates": 2063704,
+          "vcp_pruned": 498,
+          "vcp_requested": 498
+        },
+        "vcd_supported": 2063704,
+        "vcp_candidates": 498,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 1.5832483768463135e-08,
+        "vcp_verified": 498
+      },
+      {
+        "elapsed_seconds": 0.9471955050248653,
+        "evaluated_views": 24,
+        "input_count": 2329741,
+        "iteration": 9900,
+        "mode": "vcd_vcp",
+        "observed_in_multiple_views": 2329073,
+        "topology": {
+          "cleanup_pruned": 111,
+          "cloned": 55,
+          "input_count": 2329741,
+          "output_count": 2329360,
+          "prune_all_guard": false,
+          "split_children": 152,
+          "split_parents": 76,
+          "vcd_candidates": 2073325,
+          "vcp_pruned": 401,
+          "vcp_requested": 401
+        },
+        "vcd_supported": 2073325,
+        "vcp_candidates": 401,
+        "vcp_check": "accepted_all_training_views",
+        "vcp_max_train_loss_delta": 2.514570951461792e-08,
+        "vcp_verified": 401
+      }
+    ],
+    "events_scope": "current_invocation",
+    "first_iteration": 1,
+    "start_checkpoint": null
+  },
+  "final_pruning": null,
+  "gaussian_count": 2329360,
+  "git_commit": "28e7b9a7496ca04a32b58d58bae9e5a18fa9b75a",
+  "git_dirty": true,
+  "init_mode": "mvs_anywhere",
+  "initial_point_count": 2624460,
+  "initialization_source": {
+    "backend": "MVSAnywhere",
+    "base_camera_provenance_verified": false,
+    "base_initialization_sha256": "ace8cd4d1f7b8bb69edcd12f106d696a4e9a137d12943a7baf425fc6147225b0",
+    "base_point_count": 2524460,
+    "cache_generation_id": null,
+    "camera_provenance_verified": true,
+    "candidate_load_max_points": 500000,
+    "candidate_selected_sha256": "a452f722e887a2c31d57b2f7f7bea6eeb0c8e0d1d78d45b45d0bdf27ba70d196",
+    "candidate_selection": "seed0_uniform_without_replacement",
+    "complement_initialization": {
+      "base_camera_provenance_verified": false,
+      "base_first_output_order": true,
+      "base_is_geometry": true,
+      "base_path": "/home/wuxiaohan/wxh/data/mipnerf360/kitchen/24_views/dense/fused.ply",
+      "base_point_cloud_source": "colmap_dense",
+      "base_provenance": "inherited_baseline_asset_not_train_view_verified",
+      "base_quota": 2524460,
+      "base_reconstruction_camera_provenance": "not_verified_by_complement_helper",
+      "base_source_count": 2524460,
+      "budget_shortfall": 0,
+      "calibration": {
+        "camera_count": 24,
+        "cameras": [
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0657",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0669",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0681",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0693",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0705",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0717",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0729",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0741",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0754",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0765",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0778",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0789",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0802",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0813",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0826",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0837",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0850",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0862",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0874",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0886",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0898",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0910",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0922",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          },
+          {
+            "actual_image_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "calibration_image_size": [
+              3115,
+              2078
+            ],
+            "changed": false,
+            "distortion_policy": "none",
+            "geometry_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "ignored_radial_coefficient": null,
+            "image_name": "DSCF0934",
+            "intrinsic_camera_id": 1,
+            "model": "PINHOLE",
+            "original_K": [
+              [
+                3231.5814007282897,
+                0.0,
+                1557.5
+              ],
+              [
+                0.0,
+                3240.8079303073573,
+                1039.0
+              ],
+              [
+                0.0,
+                0.0,
+                1.0
+              ]
+            ],
+            "original_calibration_image_size": [
+              3115,
+              2078
+            ]
+          }
+        ],
+        "changed_camera_count": 0,
+        "source": "colmap_camera_model_parameters",
+        "training_camera_objects_modified": false
+      },
+      "candidate_pool_policy": "two_view_depth_support_and_positive_coverage_novelty",
+      "candidate_sha256": "a452f722e887a2c31d57b2f7f7bea6eeb0c8e0d1d78d45b45d0bdf27ba70d196",
+      "complete_base_preserved": true,
+      "coverage_pixels": 2.0,
+      "depth_cache_calibration_provenance": "image_names_checked_but_legacy_cache_has_no_pose_or_intrinsic_hash",
+      "depth_cache_checked": true,
+      "depth_cache_path": "/home/wuxiaohan/wxh/data/mipnerf360/kitchen/MVSAnywhere_24_views_H_1440_W_1920_img_dist_thresh_3.0_depth_thresh_0.08_vthresh_2_init/mvs_depths_masks.npz",
+      "depth_relative_scale": 0.02,
+      "depth_shape": [
+        24,
+        1440,
+        1920
+      ],
+      "depth_weight": "compact_biweight_of_relative_camera_z_residual",
+      "effective_mode": "coverage",
+      "eligible_mvs_count": 497946,
+      "fallback": null,
+      "gaussian_attributes_modified": false,
+      "geometry_filter_shortfall": 0,
+      "method": "training_view_coverage_complement",
+      "minimum_supported_training_views": 2,
+      "mode": "coverage",
+      "mvs_budget": 100000,
+      "mvs_camera_provenance_verified": true,
+      "mvs_candidate_count": 500000,
+      "mvs_index_space": "input_mvs_candidate_pool",
+      "mvs_quota": 100000,
+      "new_observations": "supplied_training_cameras_and_matching_depth_cache_only",
+      "output_point_count": 2624460,
+      "output_sha256": "fb3bfca863ea2af98005253373309fb496176f7a6184724b50938c9545adb5df",
+      "point_coordinates_or_colors_modified": false,
+      "random_generator": "local_numpy_default_rng_seed0",
+      "score_normalization": "mean_over_supported_views",
+      "selected_base_count": 2524460,
+      "selected_mvs_count": 100000,
+      "selection": "coverage_weighted_without_replacement",
+      "selection_camera_names": [
+        "DSCF0657",
+        "DSCF0669",
+        "DSCF0681",
+        "DSCF0693",
+        "DSCF0705",
+        "DSCF0717",
+        "DSCF0729",
+        "DSCF0741",
+        "DSCF0754",
+        "DSCF0765",
+        "DSCF0778",
+        "DSCF0789",
+        "DSCF0802",
+        "DSCF0813",
+        "DSCF0826",
+        "DSCF0837",
+        "DSCF0850",
+        "DSCF0862",
+        "DSCF0874",
+        "DSCF0886",
+        "DSCF0898",
+        "DSCF0910",
+        "DSCF0922",
+        "DSCF0934"
+      ],
+      "total_budget": 0,
+      "training_image_names": [
+        "DSCF0657",
+        "DSCF0669",
+        "DSCF0681",
+        "DSCF0693",
+        "DSCF0705",
+        "DSCF0717",
+        "DSCF0729",
+        "DSCF0741",
+        "DSCF0754",
+        "DSCF0765",
+        "DSCF0778",
+        "DSCF0789",
+        "DSCF0802",
+        "DSCF0813",
+        "DSCF0826",
+        "DSCF0837",
+        "DSCF0850",
+        "DSCF0862",
+        "DSCF0874",
+        "DSCF0886",
+        "DSCF0898",
+        "DSCF0910",
+        "DSCF0922",
+        "DSCF0934"
+      ],
+      "valid_depth_pixel_count": 44237132,
+      "views": [
+        {
+          "image_name": "DSCF0657",
+          "supported_base_projection_count": 1120542,
+          "supported_mvs_projection_count": 177024
+        },
+        {
+          "image_name": "DSCF0669",
+          "supported_base_projection_count": 1245635,
+          "supported_mvs_projection_count": 198914
+        },
+        {
+          "image_name": "DSCF0681",
+          "supported_base_projection_count": 1608117,
+          "supported_mvs_projection_count": 286048
+        },
+        {
+          "image_name": "DSCF0693",
+          "supported_base_projection_count": 1482556,
+          "supported_mvs_projection_count": 260838
+        },
+        {
+          "image_name": "DSCF0705",
+          "supported_base_projection_count": 1466014,
+          "supported_mvs_projection_count": 269190
+        },
+        {
+          "image_name": "DSCF0717",
+          "supported_base_projection_count": 1702363,
+          "supported_mvs_projection_count": 302818
+        },
+        {
+          "image_name": "DSCF0729",
+          "supported_base_projection_count": 1520602,
+          "supported_mvs_projection_count": 271525
+        },
+        {
+          "image_name": "DSCF0741",
+          "supported_base_projection_count": 1916702,
+          "supported_mvs_projection_count": 344857
+        },
+        {
+          "image_name": "DSCF0754",
+          "supported_base_projection_count": 1673000,
+          "supported_mvs_projection_count": 288290
+        },
+        {
+          "image_name": "DSCF0765",
+          "supported_base_projection_count": 1801077,
+          "supported_mvs_projection_count": 322286
+        },
+        {
+          "image_name": "DSCF0778",
+          "supported_base_projection_count": 800489,
+          "supported_mvs_projection_count": 167534
+        },
+        {
+          "image_name": "DSCF0789",
+          "supported_base_projection_count": 1281791,
+          "supported_mvs_projection_count": 239378
+        },
+        {
+          "image_name": "DSCF0802",
+          "supported_base_projection_count": 1027258,
+          "supported_mvs_projection_count": 207374
+        },
+        {
+          "image_name": "DSCF0813",
+          "supported_base_projection_count": 1302182,
+          "supported_mvs_projection_count": 235323
+        },
+        {
+          "image_name": "DSCF0826",
+          "supported_base_projection_count": 1054161,
+          "supported_mvs_projection_count": 205800
+        },
+        {
+          "image_name": "DSCF0837",
+          "supported_base_projection_count": 1363543,
+          "supported_mvs_projection_count": 268860
+        },
+        {
+          "image_name": "DSCF0850",
+          "supported_base_projection_count": 1594267,
+          "supported_mvs_projection_count": 288892
+        },
+        {
+          "image_name": "DSCF0862",
+          "supported_base_projection_count": 1906381,
+          "supported_mvs_projection_count": 351941
+        },
+        {
+          "image_name": "DSCF0874",
+          "supported_base_projection_count": 1975287,
+          "supported_mvs_projection_count": 359098
+        },
+        {
+          "image_name": "DSCF0886",
+          "supported_base_projection_count": 1174883,
+          "supported_mvs_projection_count": 210602
+        },
+        {
+          "image_name": "DSCF0898",
+          "supported_base_projection_count": 1668184,
+          "supported_mvs_projection_count": 316767
+        },
+        {
+          "image_name": "DSCF0910",
+          "supported_base_projection_count": 1306343,
+          "supported_mvs_projection_count": 229766
+        },
+        {
+          "image_name": "DSCF0922",
+          "supported_base_projection_count": 1301734,
+          "supported_mvs_projection_count": 215143
+        },
+        {
+          "image_name": "DSCF0934",
+          "supported_base_projection_count": 1559678,
+          "supported_mvs_projection_count": 280228
+        }
+      ]
+    },
+    "configured_max_points": 100000,
+    "fused_point_count": 2624460,
+    "fusion_policy": "baseline_geometry_mvs_complement",
+    "max_points": 500000,
+    "mode": "mvs_anywhere",
+    "mvs_point_count": 100000,
+    "path": "/home/wuxiaohan/wxh/data/mipnerf360/kitchen/MVSAnywhere_24_views_H_1440_W_1920_img_dist_thresh_3.0_depth_thresh_0.08_vthresh_2_init/mvs_input.ply",
+    "requested_strategy": "replace",
+    "resolved_strategy": "replace",
+    "selected_base_point_count": 2524460,
+    "selected_point_count": 2624460,
+    "selected_sha256": "fb3bfca863ea2af98005253373309fb496176f7a6184724b50938c9545adb5df",
+    "selection": "base_plus_coverage_mvs",
+    "source_point_count": 44237132
+  },
+  "iterations": 10000,
+  "mask_seed": 0,
+  "method": "DirectMVS-DG+VCD_VCP",
+  "metricboost_mode": "dropgaussian",
+  "model_path": "/home/wuxiaohan/wxh/DropGaussian_mvsinit_gated/output/mvs_complement/coverage/keep_base/mipnerf36024/kitchen",
+  "n_views": 24,
+  "peak_vram": 4504606208,
+  "protocol": {
+    "base_initialization_sha256": "ace8cd4d1f7b8bb69edcd12f106d696a4e9a137d12943a7baf425fc6147225b0",
+    "dataset_name": "mipnerf360",
+    "iterations": 10000,
+    "n_views": 24,
+    "rand_pcd": false,
+    "resolution": 8,
+    "seed": 0,
+    "source_path": "/home/wuxiaohan/wxh/data/mipnerf360/kitchen",
+    "test_camera_names": [
+      "DSCF0656",
+      "DSCF0664",
+      "DSCF0672",
+      "DSCF0680",
+      "DSCF0688",
+      "DSCF0696",
+      "DSCF0704",
+      "DSCF0712",
+      "DSCF0720",
+      "DSCF0728",
+      "DSCF0736",
+      "DSCF0744",
+      "DSCF0752",
+      "DSCF0760",
+      "DSCF0768",
+      "DSCF0776",
+      "DSCF0784",
+      "DSCF0792",
+      "DSCF0800",
+      "DSCF0808",
+      "DSCF0816",
+      "DSCF0824",
+      "DSCF0832",
+      "DSCF0840",
+      "DSCF0848",
+      "DSCF0856",
+      "DSCF0864",
+      "DSCF0872",
+      "DSCF0880",
+      "DSCF0888",
+      "DSCF0896",
+      "DSCF0904",
+      "DSCF0912",
+      "DSCF0920",
+      "DSCF0928"
+    ],
+    "train_camera_names": [
+      "DSCF0657",
+      "DSCF0669",
+      "DSCF0681",
+      "DSCF0693",
+      "DSCF0705",
+      "DSCF0717",
+      "DSCF0729",
+      "DSCF0741",
+      "DSCF0754",
+      "DSCF0765",
+      "DSCF0778",
+      "DSCF0789",
+      "DSCF0802",
+      "DSCF0813",
+      "DSCF0826",
+      "DSCF0837",
+      "DSCF0850",
+      "DSCF0862",
+      "DSCF0874",
+      "DSCF0886",
+      "DSCF0898",
+      "DSCF0910",
+      "DSCF0922",
+      "DSCF0934"
+    ],
+    "white_background": false
+  },
+  "scene": "kitchen",
+  "seed": 0,
+  "source_path": "/home/wuxiaohan/wxh/data/mipnerf360/kitchen",
+  "status": "completed",
+  "training_time": 631.6306531690061
+}

@@ -36,7 +36,7 @@ def clean_environment():
     return {
         key: value for key, value in os.environ.items()
         if key not in ENV_KEYS
-        and not key.startswith(("GPU_", "MVS_INIT_"))
+        and not key.startswith(("GPU_", "MVS_"))
     }
 
 
@@ -144,6 +144,8 @@ class DirectMVSDensityLauncherTest(unittest.TestCase):
                     self.assertEqual(last_value(args, "--density_control"), "vcd_vcp")
                     self.assertEqual(last_value(args, "--init_mode"), "mvs_anywhere")
                     self.assertEqual(last_value(args, "--mvs_init_strategy"), "replace")
+                    self.assertFalse(any(arg.startswith(("--mvs_geometry", "--mvs_surface"))
+                                         for arg in args))
                     self.assertEqual(last_value(args, "--mvs_init_max_points"), "100000")
                     self.assertEqual(last_value(args, "--n_views"), str(views))
                     self.assertEqual(last_value(args, "-r"), str(resolution))
@@ -164,6 +166,40 @@ class DirectMVSDensityLauncherTest(unittest.TestCase):
                     len(trains) if dataset == "dtu" else 0,
                 )
                 self.assertEqual(recorded[-1]["kind"], "summarize_mvsdrop_setting.py")
+
+    def test_removed_geometry_and_surface_options_fail_before_dispatch(self):
+        options = (
+            "--mvs_geometry_correction", "--mvs_geometry_max_controls",
+            "--mvs_geometry_local_neighbors", "--mvs_geometry_unknown",
+            "--mvs_surface_init", "--mvs_surface_neighbors", "--mvs_surface_unknown",
+            "--mvs_geometry_c", "--mvs_geo", "--mvs_g",
+            "--mvs_surface_i", "--mvs_sur", "--mvs_s", "--mvs", "--mv", "--m",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            repo, env, log = self.fixture(directory, "llff", ["fern"])
+            env["SCENES"] = "fern"
+            for option in options:
+                for args in ((option, "none"), (option + "=none",)):
+                    with self.subTest(args=args):
+                        result = self.run_script(repo, "llff", env, *args)
+                        self.assertEqual(result.returncode, 2, result.stderr)
+                        self.assertIn("Removed geometry/surface experiment option", result.stderr)
+                        self.assertFalse(log.exists())
+                        self.assertFalse((repo / "output").exists())
+
+    def test_legacy_geometry_and_surface_environment_cannot_enable_modules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo, env, log = self.fixture(directory, "llff", ["fern"])
+            env.update(SCENES="fern", MVS_GEOMETRY_CORRECTION="tps_local",
+                       MVS_GEOMETRY_MAX_CONTROLS="4", MVS_GEOMETRY_LOCAL_NEIGHBORS="8",
+                       MVS_SURFACE_INIT="oas", MVS_SURFACE_NEIGHBORS="16")
+            result = self.run_script(repo, "llff", env)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            train = next(c for c in calls(log) if c["kind"] == "train.py")
+            self.assertFalse(any(arg.startswith(("--mvs_geometry", "--mvs_surface"))
+                                 for arg in train["args"]))
+            self.assertEqual(last_value(train["args"], "--init_mode"), "mvs_anywhere")
+            self.assertEqual(last_value(train["args"], "--mvs_init_strategy"), "replace")
 
     def test_conflicting_environment_and_cli_cannot_reenable_adaptive_initialization(self):
         with tempfile.TemporaryDirectory() as directory:

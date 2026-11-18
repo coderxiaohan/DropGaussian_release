@@ -194,13 +194,14 @@ $\alpha_i$ 和 $\gamma_i$ 连续趋零。这给出了“平滑弱化”和“端
 ### 5.0 冻结的配对实验协议
 
 正式比较不再把历史 baseline 均值与新方法均值直接相减。Baseline 和 MVSInit
-必须由同一个 `scripts/train_mvsdrop_benchmark.sh` 产生，并满足：
+必须由同一个 `scripts/all/train_mvsdrop_benchmark.sh` 产生，并满足：
 
 1. 相同源码 commit，且运行时 tracked working tree 必须干净；
 2. 相同场景、训练/测试相机名称、分辨率、迭代数和 seed；
 3. 相同基础 SfM/随机点云 SHA-256；
 4. 唯一允许不同的实验变量是 `init_mode`；
-5. 每个设置必须包含完整官方场景集合，正式表格使用 seed 0/1/2 的配对均值。
+5. 每个设置必须包含项目既定的完整场景集合。当前快速实验每组只运行一次；
+   单次结果不支持统计显著性或跨随机种子稳定性声明，多次重复留作后续验证。
 
 DropGaussian-matched 主协议固定为：
 
@@ -219,15 +220,21 @@ Blender 两个分支都按相同 seed 在各自进程内生成相同的 10k 随�
 推荐从已提交的干净分支运行：
 
 ```bash
-SEEDS="0 1 2" bash scripts/run_mvsdrop_multiseed.sh
+bash scripts/all/run_all.sh --dry-run
+bash scripts/all/run_all.sh
 ```
+
+新入口默认运行四个数据集全部 9 个视角设置，baseline 与 adaptive 各一次；
+训练、渲染、DTU mask 评估及配对汇总代码集中在 `scripts/all/`。
+输出默认位于 `output/mvsdrop/all/`，不覆盖历史输出。它使用已有 MVS 缓存，
+不包含 MVS 推理和尚未实现的消融。脚本调整也需要提交后才能启动正式配对运行。
 
 先验证 Blender 配对身份时可只跑一个 setting：
 
 ```bash
-MATRIX="blender:8" SEEDS="0" \
+MATRIX="blender:8" \
 OUTPUT_ROOT="output/mvsdrop/protocol_v1" \
-bash scripts/run_mvsdrop_multiseed.sh
+bash scripts/all/run_all.sh
 ```
 
 FastGS/StereoGS 等外部结果只作为参考行；除非使用完全相同的数据划分、训练预算
@@ -284,7 +291,8 @@ gate，直接验证了独立锚点设计。
 - 通用自动策略和 exact-baseline 路由：`scene/__init__.py`
 - base/prior Gaussian 属性拼接：`scene/gaussian_model.py`
 - checkpoint 收敛曲线和 manifest：`train.py`
-- 四数据集统一 runner：`scripts/train_mvsdrop_benchmark.sh`
+- 四数据集单次完整流程：`scripts/all/run_all.sh`
+- 单设置统一 runner：`scripts/all/train_mvsdrop_benchmark.sh`
 
 所有 MVS cache 都检查相机 provenance；已知训练 split 不匹配的缓存会被拒绝，
 不会为了得到更高 reliability 而偷换相机。完整单元测试当前为 27/27 通过，包含

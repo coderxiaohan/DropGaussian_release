@@ -61,20 +61,14 @@ class ModelParams(ParamGroup):
         self.mvs_init_path = ""
         self.mvs_init_max_points = 100000
         self.mvs_init_strategy = "replace"
-        # Optional TWINGS-inspired position correction; existing runs stay exact.
-        self.mvs_geometry_correction = "none"
-        self.mvs_geometry_max_controls = 256
-        self.mvs_geometry_smoothing = 0.001
-        self.mvs_geometry_max_image_size = 1600
-        self.mvs_geometry_max_features = 8000
-        self.mvs_geometry_ratio = 0.75
-        self.mvs_geometry_reprojection_px = 2.0
-        self.mvs_geometry_min_angle_deg = 1.0
-        self.mvs_geometry_match_radius_px = 3.0
-        self.mvs_geometry_local_neighbors = 64
-        # Optional MVS surface-shape transfer; no XYZ or training-rule changes.
-        self.mvs_surface_init = "none"
-        self.mvs_surface_neighbors = 32
+        # Optional baseline-geometry preservation and MVS coverage completion.
+        # This changes only the input cloud, not Gaussian attributes/training.
+        self.mvs_complement_mode = "none"
+        self.mvs_complement_max_points = 100000
+        self.mvs_complement_total_points = 0
+        self.mvs_complement_candidate_points = 500000
+        self.mvs_complement_coverage_pixels = 2.0
+        self.mvs_complement_depth_scale = 0.02
         super().__init__(parser, "Loading Parameters", sentinel)
 
     def extract(self, args):
