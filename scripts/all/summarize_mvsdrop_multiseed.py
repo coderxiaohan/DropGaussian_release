@@ -59,10 +59,14 @@ def _summarize_scene_rows(rows: list[dict]) -> dict:
     commits = {row["git_commit"] for row in rows}
     if len(commits) != 1:
         raise ValueError(f"one setting mixes git commits: {sorted(commits)}")
+    density_identities = {row["density_identity"] for row in rows}
+    if len(density_identities) != 1:
+        raise ValueError("one setting mixes different density strategies")
     return {
         "scene_count": len(rows),
         "scenes": rows,
         "git_commit": next(iter(commits)),
+        "density_identity": next(iter(density_identities)),
         "protocols": {row["scene"]: row["protocol"] for row in rows},
         **{
             name: mean(row[name] for row in rows)
@@ -129,7 +133,10 @@ def load_setting(
             return None
         expected_init = "colmap_dense" if mode == "dropgaussian" else "mvs_anywhere"
         expected_density = "none" if mode == "dropgaussian" else "vcd_vcp"
-        density_mode = (manifest.get("density_control") or {}).get("config", {}).get("mode", "none")
+        density = manifest.get("density_control") or {}
+        periodic_mode = density.get("config", {}).get("mode", "none")
+        density_mode = density.get("requested_mode", periodic_mode)
+        pruning = (manifest.get("fastgs_pruning") or {}).get("config", {})
         initialization = manifest.get("initialization_source") or {}
         checks = {
             "seed": int(manifest.get("seed", -1)) == seed,
@@ -145,6 +152,26 @@ def load_setting(
                 initialization.get("resolved_strategy") == "replace"
                 and initialization.get("fusion_policy") == "direct_mvs_replace"
             )
+        # Current runs split periodic EGD and late DPP into two controllers.
+        # Older manifests remain readable, without relabeling their results.
+        split_controller = "pruning_strategy" in density or bool(pruning)
+        if split_controller:
+            checks["density_controller"] = (
+                periodic_mode == "vcd"
+                and density.get("pruning_strategy") == "fastgs"
+                and pruning.get("strategy") == "fastgs"
+                and pruning.get("protect_egd") is True
+                and not pruning.get("dpp_only", False)
+            ) if mode == "mvs" else (
+                periodic_mode == "none"
+                and density.get("pruning_strategy", "none") == "none"
+                and not pruning
+            )
+        density_identity = json.dumps({
+            "controller": "split" if split_controller else "legacy",
+            "periodic": density.get("config", {"mode": "none"}),
+            "pruning": pruning,
+        }, sort_keys=True)
         if not all(checks.values()):
             raise ValueError(f"protocol mismatch in {manifest_path}: {checks}")
         git_commit = manifest.get("git_commit")
@@ -171,6 +198,7 @@ def load_setting(
                 ),
                 "initialization_source": manifest.get("initialization_source"),
                 "git_commit": git_commit,
+                "density_identity": density_identity,
                 "protocol": protocol,
             }
         )
@@ -195,6 +223,7 @@ def collect(
             "evaluation_route": "trained_pair",
         }
         seed_deltas = []
+        method_density_identity = None
         for seed in seeds:
             baseline = load_setting(
                 root,
@@ -219,6 +248,9 @@ def collect(
                 method,
                 label=f"seed={seed} {tag}{views}",
             )
+            if method_density_identity is not None and method_density_identity != method["density_identity"]:
+                raise ValueError(f"seeds mix different density strategies for {tag}{views}")
+            method_density_identity = method["density_identity"]
             delta = {
                 "seed": seed,
                 **{

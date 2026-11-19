@@ -544,15 +544,18 @@ class DirectMVSSceneTest(unittest.TestCase):
             "time": SimpleNamespace(perf_counter=lambda: 1.0),
             "torch": SimpleNamespace(cuda=SimpleNamespace(max_memory_allocated=lambda: 0)),
             "git_commit": "fixture", "git_dirty": True,
-            "density_config": SimpleNamespace(mode="vcd_vcp", as_dict=lambda: {"mode": "vcd_vcp"}),
+            "density_config": SimpleNamespace(mode="vcd", use_vcd=True, as_dict=lambda: {"mode": "vcd"}),
+            "pruning_config": SimpleNamespace(enabled=False, strategy="none", dpp_only=False),
+            "protection_config": None,
             "density_events": [], "first_iter": 0, "checkpoint": None,
             "density_log_path": str(self.output / "density.jsonl"),
             "os": os, "sys": sys, "json": json,
         }
+        namespace["periodic_config"] = namespace["density_config"]
         exec(compile(ast.Module(body=training.body[start:], type_ignores=[]),
                      str(train_path), "exec"), namespace)
         manifest = json.loads((self.output / "manifest.json").read_text())
-        self.assertEqual(manifest["method"], "DropGaussian+VCD_VCP")
+        self.assertEqual(manifest["method"], "DropGaussian+VCD")
         self.assertEqual(manifest["init_mode"], "colmap_dense")
         self.assertEqual(manifest["requested_init_mode"], "mvs_anywhere")
         self.assertTrue(manifest["protocol"]["rand_pcd"])
@@ -560,7 +563,46 @@ class DirectMVSSceneTest(unittest.TestCase):
         self.assertEqual(manifest["initialization_source"]["mvs_point_count"], 0)
         self.assertEqual(manifest["initialization_source"]["fusion_policy"],
                          "blender_random_dropgaussian")
-        self.assertEqual(manifest["density_control"]["config"]["mode"], "vcd_vcp")
+        self.assertEqual(manifest["density_control"]["config"]["mode"], "vcd")
+        self.assertEqual(manifest["density_control"]["pruning_strategy"], "none")
+        self.assertNotIn("fastgs_pruning", manifest)
+
+        # Late pruning is separate from the periodic EGD diagnostics.
+        namespace["density_config"] = SimpleNamespace(
+            mode="vcd_vcp", use_vcd=True, as_dict=lambda: {"mode": "vcd_vcp"})
+        namespace["periodic_config"] = SimpleNamespace(as_dict=lambda: {"mode": "vcd"})
+        namespace["pruning_config"] = SimpleNamespace(enabled=True, strategy="fastgs", protect_egd=False, dpp_only=False,
+                                                      as_dict=lambda: {"strategy": "fastgs"})
+        namespace.update(backend_setup_seconds=2.0, fastgs_events=[],
+                         fastgs_log_path=str(self.output / "fastgs_pruning.jsonl"))
+        exec(compile(ast.Module(body=training.body[start:], type_ignores=[]),
+                     str(train_path), "exec"), namespace)
+        manifest = json.loads((self.output / "manifest.json").read_text())
+        self.assertEqual(manifest["method"], "DropGaussian+VCD+FASTGS_VCP")
+        self.assertEqual(manifest["density_control"]["config"]["mode"], "vcd")
+        self.assertEqual(manifest["fastgs_pruning"]["backend_setup_seconds"], 2.0)
+        self.assertEqual(manifest["training_time_including_backend_setup"], 3.0)
+        self.assertEqual(manifest["initialization_source"]["mvs_point_count"], 0)
+
+        namespace["pruning_config"].protect_egd = True
+        exec(compile(ast.Module(body=training.body[start:], type_ignores=[]),
+                     str(train_path), "exec"), namespace)
+        manifest = json.loads((self.output / "manifest.json").read_text())
+        self.assertEqual(manifest["method"], "DropGaussian+VCD+FASTGS_VCP_EGD_PROTECTED")
+        self.assertIn("after_native_cleanup", manifest["fastgs_pruning"]["protection_scope"])
+
+        namespace["pruning_config"].dpp_only = True
+        namespace["density_config"] = SimpleNamespace(mode="vcp", use_vcd=False)
+        namespace["periodic_config"] = SimpleNamespace(as_dict=lambda: {"mode": "none"})
+        namespace["protection_config"] = SimpleNamespace(as_dict=lambda: {"mode": "vcd"})
+        exec(compile(ast.Module(body=training.body[start:], type_ignores=[]),
+                     str(train_path), "exec"), namespace)
+        manifest = json.loads((self.output / "manifest.json").read_text())
+        self.assertEqual(manifest["method"], "DropGaussian+DPP")
+        self.assertFalse(manifest["density_control"]["densification_gate"])
+        self.assertEqual(manifest["density_control"]["config"]["mode"], "none")
+        self.assertEqual(manifest["density_control"]["protection_evidence_config"]["mode"], "vcd")
+        self.assertIn("native_adc_lineage", manifest["fastgs_pruning"]["protection_scope"])
 
 
 class DirectMVSBranchDefaultsTest(unittest.TestCase):
@@ -572,6 +614,7 @@ class DirectMVSBranchDefaultsTest(unittest.TestCase):
         self.assertEqual(args.init_mode, "mvs_anywhere")
         self.assertEqual(args.mvs_init_strategy, "replace")
         self.assertEqual(args.density_control, "vcd_vcp")
+        self.assertEqual(args.vcp_strategy, "auto")
         self.assertEqual(args.mvs_complement_mode, "none")
         for removed in ("mvs_init_total_max_points", "mvs_init_dense_base_threshold",
                         "mvs_init_dense_residual_points", "mvs_geometry_correction",
@@ -579,18 +622,22 @@ class DirectMVSBranchDefaultsTest(unittest.TestCase):
                         "mvs_geometry_max_image_size", "mvs_geometry_max_features",
                         "mvs_geometry_ratio", "mvs_geometry_reprojection_px",
                         "mvs_geometry_min_angle_deg", "mvs_geometry_match_radius_px",
-                        "mvs_geometry_local_neighbors", "mvs_surface_init", "mvs_surface_neighbors"):
+                        "mvs_geometry_local_neighbors", "mvs_surface_init", "mvs_surface_neighbors",
+                        "vcp_max_trials", "vcp_contribution_quantile"):
             self.assertFalse(hasattr(args, removed))
 
     def test_removed_experiment_options_are_not_accepted_by_cli(self):
         parser = ArgumentParser()
         ModelParams(parser)
+        OptimizationParams(parser)
         for option, value in (
             ("--mvs_geometry_correction", "tps"),
             ("--mvs_geometry_correction", "none"),
             ("--mvs_geometry_max_controls", "128"),
             ("--mvs_surface_init", "oas"),
             ("--mvs_surface_neighbors", "32"),
+            ("--vcp_max_trials", "2"),
+            ("--vcp_contribution_quantile", "0.1"),
         ):
             with self.subTest(option=option, value=value), mock.patch("sys.stderr"):
                 with self.assertRaises(SystemExit) as rejected:

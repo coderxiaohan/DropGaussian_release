@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Geometry-complementary initialization plus EGD; no TBP.
+# Geometry-complementary initialization plus EGD; no DPP.
 # N_VIEWS / GPU_ID select the setting; --dry-run previews without training.
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 exec bash "$script_dir/../_run.sh" complement_egd mipnerf360 "$@"

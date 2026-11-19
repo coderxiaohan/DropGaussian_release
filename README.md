@@ -44,14 +44,18 @@ opacity = opacity * compensation[:, None]
 
 The current working implementation on `exp/mvs-vcd-vcp` has two modules:
 **geometry-complementary MVS initialization** and **multi-view density
-control** (EGD/TBP; the existing CLI names remain `vcd`/`vcp`). The density
+control** (EGD/DPP; the existing CLI names remain `vcd`/`vcp`). The density
 controller is adapted from FastGS ideas, not an exact upstream reproduction.
 DropGaussian dropout, the photometric objective, learning rates, camera splits,
 and the densification event schedule are unchanged.
 
+For a detailed Chinese explanation of geometry complement, EGD and DPP,
+including formulas, intuitive examples, implementation boundaries and ablations,
+see [方法与三个设计点详解](article/method_innovations_zh.md).
+
 The main entry points are `scripts/mvs_complement/train_<dataset>.sh`.
 For Blender, the main protocol now retains the original 10,000-point random
-DropGaussian initialization and applies the same EGD/TBP density control, without
+DropGaussian initialization and applies the same EGD/DPP density control, without
 MVS. LLFF, DTU, and Mip-NeRF360 still use geometry-complementary initialization.
 `scripts/mvs_vcd_vcp/` is the direct-MVS comparison, not the main initialization
 method. TPS/TWINGS geometry correction and OAS surface-covariance experiments,
@@ -79,14 +83,14 @@ reconstructions.
 initializer: 10,000 points in `[-1, 1]^3`, original colors, and ordinary Gaussian
 attributes. Existing `points3d.ply` files are neither used as a reconstruction
 nor overwritten. No MVS point/depth cache is loaded and no MVS points are added.
-DropGaussian training and EGD/TBP are unchanged. This is an explicit experimental
+DropGaussian training and EGD/DPP use the same policy as the real datasets. This is an explicit experimental
 protocol choice, not a learned reliability gate or a guarantee of baseline PSNR;
 report it in experimental settings rather than claiming MVS is used on all four
 datasets. `Scene` also enforces this behavior for direct `train.py` calls with
 Blender-format input and an enabled complement mode.
 
 The Blender launcher writes new runs to
-`output/mvs_complement/blender_random/blender<N>/` (or below the supplied
+`output/mvs_complement_dpp/blender_random/blender<N>/` (or below the supplied
 `OUTPUT_ROOT`). MVS complement budgets do not apply to this random initializer.
 Initialization metadata records the actual base/MVS counts and effective mode.
 The saved results under `coverage/keep_base/blender8` and
@@ -137,37 +141,48 @@ caches. Historical caches without camera metadata are still accepted, with
 comparison. Nonfinite points are removed. No additional reliability filtering
 is applied to the valid cache points.
 
-### Density control: EGD and TBP (`vcd` / `vcp` in code)
+### Density control: EGD and DPP (`vcd` / `vcp` in code)
 
 This is the project's independent adaptation of
 [FastGS](https://github.com/fastgs/FastGS) and its
 [sparse-view implementation](https://github.com/fastgs/FastGS/tree/fast-dropgaussian),
-**not an exact reproduction** of their CUDA scoring rules.
+**not an exact reproduction** of their full training pipeline.
 
 - **EGD / `vcd`:** keep the original gradient/size criterion for clone/split, but also
   require support in high-error regions of at least two distinct training
   views. A Gaussian's compositing mass must be more concentrated in the
   high-error mask than the image-wide mask area. This identifies refinement
   opportunities; it does not prove that every proposed split will improve PSNR.
-- **TBP / `vcp`:** propose points with low contribution in every observed training
-  view, requiring at least two observations; usefulness in any view vetoes a
-  proposal. Remove the candidate batch in a read-only render proxy, then accept
-  only if the current `L1 + lambda_dssim * (1 - SSIM)` loss does not increase
-  in any training view, up to floating-point roundoff.
+- **DPP / `vcp` with `fastgs`:** count contributions to high-error pixels,
+  weight the counts by each training view's loss, and normalize the scores.
+  Delete points exceeding the score threshold or below the opacity threshold.
+  The full method protects the clone parents/new points and split children
+  produced by EGD in the same density event. This protection is temporary and
+  does not replace native opacity/size cleanup.
 
 Diagnostics use all distinct **training** cameras with dropout disabled only
-for those diagnostic renders. Per-point contribution is the rasterizer's
-`alpha * transmittance` mass, measured through a detached color-gradient probe.
+for those diagnostic renders. EGD measures `alpha * transmittance` mass through
+a detached color-gradient probe. DPP uses the separate CUDA count backend.
 The normal training pass still uses DropGaussian. Original low-opacity/size
-cleanup remains separate and is not covered by VCP's acceptance check.
+cleanup remains separate.
 No FastGS optimizer, renderer replacement, AbsGS gradients, or loss changes are
 imported.
 
-Shared controls are `--density_min_views 2`,
-`--vcd_error_quantile 0.75`, and `--vcp_contribution_quantile 0.10`.
+EGD controls are `--density_min_views 2` and `--vcd_error_quantile 0.75`.
+DPP defaults are interval `8000`, pixel-loss threshold `0.1`, pruning-score
+threshold `0.9`, and opacity threshold `0.1`. Pruning must leave optimization
+steps afterward and cannot overlap opacity resets during densification.
 These are configurable hyperparameters, not learned quantities.
 Additional diagnostic rendering has a runtime cost: neither FastGS-equivalent
 speed nor improved held-out metrics is guaranteed.
+
+`--vcp_strategy auto` is the default: `density_control=none` or `vcd` disables
+the additional pruning; `vcd_vcp` enables protected DPP; `vcp` enables the
+unprotected FastGS pruning comparison. Explicit `--vcp_strategy fastgs` uses
+`--fastgs_protect_egd` to select protection. `none` disables the additional
+pruning. The main complement launcher explicitly selects
+`--vcp_strategy fastgs --fastgs_protect_egd`. The old TBP implementation and
+its retry launchers have been removed; historical results remain unchanged.
 
 ### Run the four datasets
 
@@ -183,8 +198,11 @@ N_VIEWS=8 GPU_ID=3 bash scripts/mvs_complement/train_blender.sh
 
 Each command runs all configured scenes once, then renders and summarizes;
 DTU uses foreground-mask evaluation. Real-dataset outputs default to
-`output/mvs_complement/coverage/keep_base/<dataset><views>/<scene>/`;
-Blender main-method outputs use `output/mvs_complement/blender_random/blender8/<scene>/`.
+`output/mvs_complement_dpp/coverage/keep_base/<dataset><views>/<scene>/`;
+Blender main-method outputs use `output/mvs_complement_dpp/blender_random/blender8/<scene>/`.
+Historical `output/mvs_complement/` runs are preserved and must not be relabeled
+as DPP results. The fixed-coverage `scripts/mvs_complement_egd_fastgs/` entry
+also remains available with its existing output directory and numeric controls.
 For MVS runs, changing the complement mode or total budget changes the
 intermediate output directories. Existing nonempty main-method settings are rejected; use a fresh
 `OUTPUT_ROOT` for another experiment. To run the direct-MVS comparison, use the
@@ -224,15 +242,14 @@ Keep `scripts/mvs_complement/` as the complete-method entry point. The dedicated
 [`scripts/ablation/`](scripts/ablation/README.md) launchers fix module choices and
 separate results; they do not modify the training algorithms:
 
-| Directory under `scripts/ablation/` | Complementary MVS initialization | EGD | TBP |
+| Directory under `scripts/ablation/` | Complementary MVS initialization | EGD gating | Protected DPP |
 | --- | --- | --- | --- |
 | `baseline/` | No | No | No |
 | `complement_only/` | Yes | No | No |
 | `egd_only/` | No | Yes | No |
-| `tbp_only/` | No | No | Yes |
+| `dpp_only/` | No | No | Yes |
+| `egd_dpp/` | No | Yes | Yes |
 | `complement_egd/` | Yes | Yes | No |
-| `complement_tbp/` | Yes | No | Yes |
-| `egd_tbp/` | No | Yes | Yes |
 
 Each directory contains `train_llff.sh`, `train_dtu.sh`, `train_mipnerf360.sh`,
 `train_blender.sh`, and `train_all_views.sh`. Results default to
@@ -242,7 +259,7 @@ nonempty settings are rejected. Both single-setting and matrix launchers support
 `--dry-run`; matrix launchers also accept `MATRIX` and per-setting GPU mappings.
 
 ```bash
-# All LLFF scenes at three views; EGD and TBP are both disabled.
+# All LLFF scenes at three views; EGD and DPP are both disabled.
 GPU_ID=0 N_VIEWS=3 bash scripts/ablation/complement_only/train_llff.sh
 # Preview every setting for the EGD-only ablation, without training.
 bash scripts/ablation/egd_only/train_all_views.sh --dry-run
@@ -254,8 +271,9 @@ appropriate directory instead. The original DropGaussian regularization and
 native density operations are retained. Complementary initialization is not
 direct MVS replacement. On Blender every ablation preserves the complete
 method's original random initialization: `complement_only` equals `baseline`,
-`complement_egd` equals `egd_only`, `complement_tbp` equals `tbp_only`, and
-`egd_tbp` equals the complete-method configuration. Do not treat these as
+`complement_egd` equals `egd_only`, and `egd_dpp` equals the complete-method
+configuration. DPP-only keeps native ADC and computes multi-view support only
+for same-event pruning protection. Do not treat these as
 distinct MVS initialization experiments on Blender.
 
 Baseline and module-disable switches remain only as experimental controls;
@@ -278,15 +296,18 @@ DENSITY_CONTROL=vcp bash scripts/mvs_vcd_vcp/train_llff.sh
 bash scripts/dropgaussian_vcd_vcp/train_llff.sh
 # Original DropGaussian initialization and density control
 bash scripts/train_llff.sh
-# Main Blender protocol: random initialization + EGD/TBP (no MVS cache required)
+# Main Blender protocol: random initialization + EGD/DPP (no MVS cache required)
 GPU_ID=0 N_VIEWS=8 bash scripts/mvs_complement/train_blender.sh
 # Historical direct-MVS Blender comparison remains available explicitly
 bash scripts/mvs_vcd_vcp/train_blender.sh
 ```
 
 Density variants use separate `output/mvs_<mode>/` or
-`output/dropgaussian_<mode>/` roots. Always use a fresh `OUTPUT_ROOT` when
-changing other hyperparameters: completed outputs may otherwise be skipped.
+`output/dropgaussian_<mode>/` roots. The shared runner requires a fresh or empty
+setting directory for every policy, including baseline runs, and rejects
+nonempty settings before any training, rendering or summary writes. Use a new
+`OUTPUT_ROOT` for repeats; historical outputs are never reused with the current
+pruning policy. `MODE=both` checks both methods before starting either one.
 `scripts/vcd_vcp/` and `scripts/train_mvsinit_<dataset>.sh` are direct-MVS
 compatibility entries on this branch, not adaptive entries.
 `scripts/mvs/` retains direct MVS with original density control as an ablation.

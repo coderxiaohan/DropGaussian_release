@@ -27,6 +27,11 @@ import uuid
 from tqdm import tqdm
 from utils.image_utils import psnr
 from utils.view_consistent_density import DensityControlConfig, evaluate_density_control
+from utils.fastgs_pruning import (
+    FastGSPruningConfig, periodic_density_config,
+    evaluate_fastgs_pruning, apply_fastgs_pruning, validate_training_schedule,
+    dpp_protection_config, validate_dpp_initialization,
+)
 from argparse import ArgumentParser, Namespace
 from arguments import ModelParams, PipelineParams, OptimizationParams
 from torchvision.utils import save_image
@@ -41,6 +46,19 @@ except ImportError:
 
 def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoint_iterations, checkpoint, debug_from, seed):
     density_config = DensityControlConfig.from_options(opt)
+    pruning_config = FastGSPruningConfig.from_options(opt)
+    periodic_config = periodic_density_config(density_config, pruning_config)
+    protection_config = dpp_protection_config(density_config, pruning_config)
+    validate_dpp_initialization(pruning_config, dataset)
+    validate_training_schedule(pruning_config, opt, dataset.white_background)
+    backend_setup_seconds = 0.0
+    if pruning_config.enabled:
+        # Fail on toolchain issues before loading data or spending 8k updates.
+        # Record one-time compilation separately from optimization time.
+        from gaussian_renderer.fastgs_pruning import prepare_fastgs_pruning_backend
+        setup_started = time.perf_counter()
+        prepare_fastgs_pruning_backend()
+        backend_setup_seconds = time.perf_counter() - setup_started
     torch.cuda.reset_peak_memory_stats()
     training_start = time.perf_counter()
     first_iter = 0
@@ -71,13 +89,35 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     pseudo_stack = None
     convergence_curve = []
     density_events = []
+    fastgs_events = []
+    fastgs_log_path = os.path.join(dataset.model_path, "fastgs_pruning.jsonl")
+    if pruning_config.enabled:
+        with open(fastgs_log_path, "a" if checkpoint else "w") as stream:
+            stream.write(json.dumps({"event": "start", "first_iteration": first_iter,
+                                     "config": pruning_config.as_dict(),
+                                     "checkpoint": checkpoint}) + "\n")
     density_log_path = os.path.join(dataset.model_path, "density_control.jsonl")
     if density_config.mode != "none":
         # Explicit fresh/resume boundary, independent of the legacy checkpoint.
         with open(density_log_path, "a" if checkpoint else "w") as stream:
             stream.write(json.dumps({"event": "start", "first_iteration": first_iter,
-                                     "config": density_config.as_dict(),
+                                     "config": periodic_config.as_dict(),
+                                     "pruning_strategy": pruning_config.strategy,
                                      "checkpoint": checkpoint}) + "\n")
+
+    def report_and_save(iteration, loss, elapsed):
+        evaluation = training_report(
+            dataset, tb_writer, iteration, loss, l1_loss, elapsed,
+            testing_iterations, scene, render, (pipe, background),
+        )
+        if evaluation is not None:
+            convergence_curve.append(evaluation)
+            with open(os.path.join(dataset.model_path, "convergence.json"), "w") as stream:
+                json.dump(convergence_curve, stream, indent=2, sort_keys=True)
+        if iteration in saving_iterations:
+            print("\n[ITER {}] Saving Gaussians".format(iteration))
+            scene.save(iteration)
+
     for iteration in range(first_iter, opt.iterations + 1):        
         iter_start.record()
 
@@ -120,26 +160,14 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if iteration == opt.iterations:
                 progress_bar.close()
 
-            # Log and save
-            evaluation = training_report(
-                dataset,
-                tb_writer,
-                iteration,
-                loss,
-                l1_loss,
-                iter_start.elapsed_time(iter_end),
-                testing_iterations,
-                scene,
-                render,
-                (pipe, background),
-            )
-            if evaluation is not None:
-                convergence_curve.append(evaluation)
-                with open(os.path.join(dataset.model_path, "convergence.json"), "w") as stream:
-                    json.dump(convergence_curve, stream, indent=2, sort_keys=True)
-            if (iteration in saving_iterations):
-                print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration)
+            # Preserve legacy reporting order except on a late-pruning event:
+            # that event's images, metrics and PLY must all describe its result.
+            fastgs_due = pruning_config.should_prune(iteration, opt.iterations)
+            # Event-local only: never carry protection across iterations or
+            # infer it from ADC's already-reset gradient statistics.
+            egd_protection = None
+            if not fastgs_due:
+                report_and_save(iteration, loss, iter_start.elapsed_time(iter_end))
 
             # Densification
             if (
@@ -151,20 +179,60 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
                 if iteration > opt.densify_from_iter and iteration % opt.densification_interval == 0:
                     size_threshold = None
-                    if density_config.mode == "none":
-                        gaussians.densify_and_prune(opt.densify_grad_threshold, 0.005, scene.cameras_extent, size_threshold)
+                    min_opacity = 0.005
+                    if periodic_config.mode == "none":
+                        if fastgs_due and pruning_config.dpp_only:
+                            # Native ADC stays ungated. Shared multiview support
+                            # is used ONLY for the subsequent DPP pruning veto.
+                            torch.cuda.synchronize()
+                            density_started = time.perf_counter()
+                            decision = evaluate_density_control(
+                                gaussians, scene.getTrainCameras(), pipe, background,
+                                protection_config, opt.lambda_dssim,
+                                native_opacity_threshold=min_opacity,
+                            )
+                            if decision.densify_mask is None:
+                                raise RuntimeError("DPP-only requires this event's multiview protection evidence")
+                            changes, egd_protection = gaussians.densify_and_prune(
+                                opt.densify_grad_threshold, min_opacity, scene.cameras_extent,
+                                size_threshold, protection_support=decision.densify_mask,
+                            )
+                            torch.cuda.synchronize()
+                            event = {"iteration": iteration, **decision.diagnostics,
+                                     "event": "dpp_protection_evidence",
+                                     "densification_gate": False,
+                                     "protection_evidence": "multi_view_error_support",
+                                     "topology": changes,
+                                     "elapsed_seconds": time.perf_counter() - density_started}
+                            density_events.append(event)
+                            with open(density_log_path, "a") as stream:
+                                stream.write(json.dumps(event, sort_keys=True) + "\n")
+                            if tb_writer:
+                                tb_writer.add_scalar("dpp/protection_supported", event["vcd_supported"], iteration)
+                                tb_writer.add_scalar("dpp/evidence_seconds", event["elapsed_seconds"], iteration)
+                        else:
+                            gaussians.densify_and_prune(opt.densify_grad_threshold, min_opacity, scene.cameras_extent, size_threshold)
                     else:
                         torch.cuda.synchronize()
                         density_started = time.perf_counter()
                         decision = evaluate_density_control(
                             gaussians, scene.getTrainCameras(), pipe, background,
-                            density_config, opt.lambda_dssim,
+                            periodic_config, opt.lambda_dssim,
+                            native_opacity_threshold=min_opacity,
                         )
-                        changes = gaussians.densify_and_prune_view_consistent(
-                            opt.densify_grad_threshold, 0.005, scene.cameras_extent,
-                            size_threshold, densify_mask=decision.densify_mask,
-                            prune_mask=decision.prune_mask,
-                        )
+                        if fastgs_due and pruning_config.protect_egd:
+                            if decision.densify_mask is None:
+                                raise RuntimeError("EGD protection requires this event's EGD decision")
+                            changes, egd_protection = gaussians.densify_and_prune_view_consistent(
+                                opt.densify_grad_threshold, min_opacity, scene.cameras_extent,
+                                size_threshold, densify_mask=decision.densify_mask,
+                                return_densify_protection=True,
+                            )
+                        else:
+                            changes = gaussians.densify_and_prune_view_consistent(
+                                opt.densify_grad_threshold, min_opacity, scene.cameras_extent,
+                                size_threshold, densify_mask=decision.densify_mask,
+                            )
                         torch.cuda.synchronize()
                         event = {"iteration": iteration, **decision.diagnostics,
                                  "topology": changes,
@@ -174,11 +242,38 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                             stream.write(json.dumps(event, sort_keys=True) + "\n")
                         if tb_writer:
                             tb_writer.add_scalar("density/vcd_supported", event["vcd_supported"], iteration)
-                            tb_writer.add_scalar("density/vcp_verified", event["vcp_verified"], iteration)
                             tb_writer.add_scalar("density/seconds", event["elapsed_seconds"], iteration)
                 
                 if iteration % opt.opacity_reset_interval == 0 or (dataset.white_background and iteration == opt.densify_from_iter):
                     gaussians.reset_opacity()
+
+            # Official sparse-view FastGS late VCP: independently scheduled,
+            # AFTER ADC/reset, and rescored on the current population. Never
+            # reuse pre-clone/split scores or alter EGD's selection rules.
+            if fastgs_due:
+                torch.cuda.synchronize()
+                pruning_started = time.perf_counter()
+                decision = evaluate_fastgs_pruning(
+                    gaussians, scene.getTrainCameras(), pipe, background, pruning_config,
+                    protection_mask=egd_protection,
+                )
+                changes = apply_fastgs_pruning(gaussians, decision)
+                torch.cuda.synchronize()
+                event = {"iteration": iteration, **decision.diagnostics, **changes,
+                         "densification_gate": periodic_config.use_vcd,
+                         "protection_evidence": (
+                             "multi_view_error_support_intersect_native_adc"
+                             if pruning_config.dpp_only else "actual_egd_adc" if pruning_config.protect_egd else "none"
+                         ),
+                         "elapsed_seconds": time.perf_counter() - pruning_started}
+                fastgs_events.append(event)
+                with open(fastgs_log_path, "a") as stream:
+                    stream.write(json.dumps(event, sort_keys=True) + "\n")
+                if tb_writer:
+                    tb_writer.add_scalar("fastgs/pruned", event["pruned"], iteration)
+                    tb_writer.add_scalar("fastgs/blocked_by_egd", event["blocked_by_egd"], iteration)
+                    tb_writer.add_scalar("fastgs/seconds", event["elapsed_seconds"], iteration)
+                report_and_save(iteration, loss, iter_start.elapsed_time(iter_end))
 
             # Optimizer step
             if iteration < opt.iterations:
@@ -254,9 +349,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
         "command": list(sys.argv),
     }
     if density_config.mode != "none":
-        manifest["method"] += "+" + density_config.mode.upper()
+        manifest["method"] += "+" + (
+            "DPP" if pruning_config.dpp_only else
+            (("VCD+" if density_config.use_vcd else "") + "FASTGS_VCP"
+             + ("_EGD_PROTECTED" if pruning_config.protect_egd else ""))
+            if pruning_config.enabled else density_config.mode.upper()
+        )
         manifest["density_control"] = {
-            "config": density_config.as_dict(),
+            "config": periodic_config.as_dict(),
+            "requested_mode": density_config.mode,
+            "pruning_strategy": pruning_config.strategy,
+            "densification_gate": density_config.use_vcd,
+            "protection_evidence_config": (
+                protection_config.as_dict() if protection_config is not None else None
+            ),
             "events": density_events,
             "events_scope": "current_invocation",
             "first_iteration": first_iter,
@@ -264,6 +370,26 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             "event_log": density_log_path,
             "diagnostic_views": "all_distinct_training_views",
             "dropout_during_diagnostics": False,
+        }
+    if pruning_config.enabled:
+        manifest["training_time_including_backend_setup"] = manifest["training_time"] + backend_setup_seconds
+        manifest["fastgs_pruning"] = {
+            "config": pruning_config.as_dict(),
+            "backend_setup_seconds": backend_setup_seconds,
+            "events": fastgs_events,
+            "events_scope": "current_invocation",
+            "first_iteration": first_iter,
+            "start_checkpoint": checkpoint,
+            "event_log": fastgs_log_path,
+            "diagnostic_views": "all_distinct_training_views",
+            "dropout_during_diagnostics": False,
+            "source": "https://github.com/fastgs/FastGS/tree/fast-dropgaussian",
+            "protection_scope": (
+                "this_event_native_adc_lineage_with_multiview_support_after_native_cleanup"
+                if pruning_config.dpp_only else
+                "this_event_actual_clone_parents_and_children_split_children_after_native_cleanup"
+                if pruning_config.protect_egd else "none"
+            ),
         }
     with open(os.path.join(dataset.model_path, "manifest.json"), "w") as stream:
         json.dump(manifest, stream, indent=2, sort_keys=True)

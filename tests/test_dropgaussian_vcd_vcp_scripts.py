@@ -16,7 +16,7 @@ SCRIPT_DIR = Path("scripts/dropgaussian_vcd_vcp")
 DATASETS = {
     "llff": (3, 8, "fern flower fortress horns leaves orchids room trex"),
     "dtu": (3, 4, "scan8 scan21 scan30 scan31 scan34 scan38 scan40 scan41 scan45 scan55 scan63 scan82 scan103 scan110 scan114"),
-    "mipnerf360": (12, 8, "bicycle bonsai counter garden kitchen room stump"),
+    "mipnerf360": (12, 8, "bicycle   bonsai counter garden kitchen room stump"),
     "blender": (8, 1, "chair drums ficus hotdog lego materials mic ship"),
 }
 SETTINGS = (

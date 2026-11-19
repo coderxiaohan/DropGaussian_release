@@ -1,25 +1,27 @@
-Research document status — 2026-11-18
+Research document status — 2026-11-19
 
 This directory saves existing drafts and figure revisions. It does not imply
 that the historical manuscript has been updated to the current implementation.
 
 Current implementation
+See method_innovations_zh.md for a detailed Chinese explanation of the three
+design points, formulas, examples, code mapping and ablation interpretation.
 See ../README.md and ../scripts/mvs_complement/ for geometry-complementary
 initialization (preserve reconstructed geometry and fill gaps with MVS), followed
-by EGD/TBP density control. Internal CLI names remain vcd/vcp.
+by EGD/DPP density control. Internal CLI names remain vcd/vcp; the legacy
+trial-pruning implementation and its experiment entrypoints have been removed.
 The main Blender entry now uses original DropGaussian random initialization
-(10,000 points), without MVS, while retaining EGD/TBP. This initialization
+(10,000 points), without MVS, while retaining EGD/DPP. This initialization
 exception needs disclosure in experimental settings; it is not an adaptive gate.
 The density controller is adapted from FastGS ideas; renaming does not remove
 that provenance. DropGaussian remains the underlying training baseline.
 
 Current pipeline illustration
-figures/geometry_complement_egd_tbp_pipeline_v10.png
+figures/geometry_complement_egd_dpp_pipeline_v1.png
 Its corresponding .prompt.txt records the built-in imagegen edit prompt.
-The last change removes an orphaned diagnostic input arrow and places Periodic
-on the Current Gaussians -> Diagnostics connection.
-This saved figure predates the Blender random-initialization exception and has
-not been regenerated to depict it.
+This is a schematic illustration, not an executable event schedule. DPP is a
+late event, not an operation executed at every EGD update. For the exact order,
+protection scope and Blender protocol exception, use method_innovations_zh.md.
 
 Historical material — not the current method specification
 - main.tex, main_zh.tex, main.pdf, main_zh.pdf and main (1).pdf are existing

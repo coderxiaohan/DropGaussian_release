@@ -173,7 +173,7 @@ class DensityMaskValidationTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 model.densify_and_prune_view_consistent(
                     0.5, 0.005, 1.0, None,
-                    torch.ones(3, dtype=torch.bool), torch.ones(2, dtype=torch.bool),
+                    torch.ones(2, dtype=torch.bool),
                 )
         prune.assert_not_called()
         clone.assert_not_called()
@@ -193,31 +193,28 @@ class ViewConsistentDensityModelTest(unittest.TestCase):
             self.assertEqual(state["exp_avg"].shape, parameter.shape)
             self.assertEqual(state["exp_avg_sq"].shape, parameter.shape)
 
-    def test_vcp_then_clone_and_split_preserves_original_index_identity(self):
+    def test_gated_clone_and_split_preserves_original_index_identity(self):
         model = _model("cuda", scales=(0.005, 0.2, 0.005, 0.2), optimizer=True)
         # Make existing rows identifiable in Adam moments as well as features.
         for group in model.optimizer.param_groups:
             state = model.optimizer.state[group["params"][0]]
             state["exp_avg"].fill_(3.0)
             state["exp_avg_sq"].fill_(5.0)
-        densify = torch.tensor([True, True, True, False], device="cuda")
-        prune = torch.tensor([False, False, True, False], device="cuda")
+        densify = torch.tensor([True, True, False, False], device="cuda")
         summary = model.densify_and_prune_view_consistent(
-            0.5, 0.005, 1.0, None, densify, prune,
+            0.5, 0.005, 1.0, None, densify,
         )
-        self.assertEqual(summary["vcp_pruned"], 1)
         self.assertEqual(summary["cloned"], 1)
         self.assertEqual(summary["split_parents"], 1)
         self.assertEqual(summary["split_children"], 2)
-        self.assertEqual(summary["output_count"], 5)
-        self.assertEqual(model._features_dc[:, 0, 0].tolist(), [0, 3, 0, 1, 1])
-        self.assertEqual(densify.tolist(), [True, True, True, False])
-        self.assertEqual(prune.tolist(), [False, False, True, False])
+        self.assertEqual(summary["output_count"], 6)
+        self.assertEqual(model._features_dc[:, 0, 0].tolist(), [0, 2, 3, 0, 1, 1])
+        self.assertEqual(densify.tolist(), [True, True, False, False])
         self.assert_consistent_optimizer(model)
         for group in model.optimizer.param_groups:
             moment = model.optimizer.state[group["params"][0]]["exp_avg"]
-            self.assertTrue(torch.all(moment[:2] == 3))
-            self.assertTrue(torch.all(moment[2:] == 0))
+            self.assertTrue(torch.all(moment[:3] == 3))
+            self.assertTrue(torch.all(moment[3:] == 0))
 
     def test_adaptive_noop_preserves_adam_and_legacy_skipped_update(self):
         model = _model("cuda", optimizer=True)
@@ -229,7 +226,6 @@ class ViewConsistentDensityModelTest(unittest.TestCase):
             summary = model.densify_and_prune_view_consistent(
                 0.5, 0.005, 1.0, None,
                 torch.zeros(3, dtype=torch.bool, device="cuda"),
-                torch.zeros(3, dtype=torch.bool, device="cuda"),
             )
         self.assertEqual(summary["output_count"], 3)
         prune.assert_not_called()
@@ -240,12 +236,11 @@ class ViewConsistentDensityModelTest(unittest.TestCase):
         self.assertEqual(model.xyz_gradient_accum.sum().item(), 0)
         self.assertEqual(model.denom.sum().item(), 0)
 
-    def test_fully_pruned_population_keeps_one_even_after_opacity_cleanup(self):
+    def test_opacity_cleanup_keeps_one_point_when_every_point_is_below_threshold(self):
         model = _model("cuda", opacity=[0.0001, 0.0003, 0.0002], optimizer=True)
         summary = model.densify_and_prune_view_consistent(
             0.5, 0.005, 1.0, None,
-            torch.ones(3, dtype=torch.bool, device="cuda"),
-            torch.ones(3, dtype=torch.bool, device="cuda"),
+            torch.zeros(3, dtype=torch.bool, device="cuda"),
         )
         self.assertTrue(summary["prune_all_guard"])
         self.assertEqual(summary["output_count"], 1)

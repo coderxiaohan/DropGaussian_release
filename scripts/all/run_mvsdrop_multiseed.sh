@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Resumable paired evaluation. Run one seed per GPU/process, for example:
+# Paired evaluation with fresh setting outputs. Run one seed per GPU/process:
 #   SEEDS=1 GPU_ID=1 bash scripts/all/run_mvsdrop_multiseed.sh
 #   SEEDS=2 GPU_ID=2 bash scripts/all/run_mvsdrop_multiseed.sh
 # For one run per method/scene, use scripts/all/run_all.sh instead.

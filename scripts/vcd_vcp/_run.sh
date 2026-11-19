@@ -29,7 +29,7 @@ for argument in "$@"; do
             "PYTHON_BIN, OUTPUT_ROOT, SEED, PORT, DTU_MASK_ROOT and MVS_INIT_* options." \
             "Default output: output/mvs_<DENSITY_CONTROL>/${dataset}<N_VIEWS>." \
             "MODE=dropgaussian uses the dropgaussian_ prefix instead." \
-            "Use a fresh OUTPUT_ROOT when changing settings beyond MODE/DENSITY_CONTROL." \
+            "Every run requires a fresh or empty OUTPUT_ROOT; nonempty settings are rejected before any writes." \
             "DENSITY_CONTROL is authoritative over any extra --density_control argument." \
             "" \
             "Example: SCENES=fern DENSITY_CONTROL=vcd bash scripts/vcd_vcp/train_llff.sh"

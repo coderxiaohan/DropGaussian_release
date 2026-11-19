@@ -18,6 +18,7 @@ case "${1:-}" in
             'LLFF: 3/6/9 views; DTU: 3/6/9; Mip-NeRF360: 12/24; Blender: 8.' \
             '' \
             'Environment: GPU_ID, PYTHON_BIN, OUTPUT_ROOT, MATRIX, MODES.' \
+            'Every output setting must be fresh or empty; existing experiment results are never reused.' \
             'Default output: <repo>/output/mvs_vcd_vcp/all (single run under seed_0).' \
             'SEEDS is intentionally ignored; this entry point never repeats runs.' \
             'Use --dry-run to preview without training or writing outputs.' \

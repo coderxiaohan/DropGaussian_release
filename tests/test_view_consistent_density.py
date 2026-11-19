@@ -1,8 +1,8 @@
 """CPU tests of view-consistent decisions, without a rasterizer or training run.
 
 The renderer and contribution pass are deterministic injected fixtures. The
-controller still uses its real PyTorch masks, quantiles, L1/SSIM objective and
-filtered Gaussian proxy; no score calculation is mocked.
+controller still uses its real PyTorch masks and EGD quantiles; no score
+calculation is mocked.
 """
 
 import random
@@ -38,7 +38,7 @@ def tearDownModule():
 
 
 class FakeGaussianModel:
-    """Expose precisely the public Gaussian attributes the probe consumes."""
+    """Small parameterized model for checking diagnostic immutability."""
 
     def __init__(self, count=3):
         ids = torch.arange(count, dtype=torch.float32)
@@ -49,35 +49,10 @@ class FakeGaussianModel:
         rotations = torch.zeros(count, 4)
         rotations[:, 0] = 1.0
         self._rotation = torch.nn.Parameter(rotations)
-        self.active_sh_degree = 0
-        self.max_sh_degree = 1
-        self.covariance_calls = 0
 
     @property
     def get_xyz(self):
         return self._xyz
-
-    @property
-    def get_features(self):
-        return self._features
-
-    @property
-    def get_opacity(self):
-        return self._opacity
-
-    @property
-    def get_scaling(self):
-        return self._scaling
-
-    @property
-    def get_rotation(self):
-        return self._rotation
-
-    def get_covariance(self, scaling_modifier=1.0):
-        self.covariance_calls += 1
-        diagonal = (self._scaling * scaling_modifier).square()
-        zero = torch.zeros_like(diagonal[:, 0])
-        return torch.stack((diagonal[:, 0], zero, zero, diagonal[:, 1], zero, diagonal[:, 2]), dim=1)
 
     def parameters(self):
         return (self._xyz, self._features, self._opacity, self._scaling, self._rotation)
@@ -108,25 +83,24 @@ def evidence(mass, high=None, visible=None):
 
 
 class ProbeHarness:
-    def __init__(self, model, contributions, images=None, after=None):
+    def __init__(self, model, contributions, images=None):
         self.model = model
         self.contributions = contributions
         self.images = images or {}
-        self.after = after
         self.render_calls = []
         self.contribution_calls = []
 
     def render(self, view, model, pipe, background, **kwargs):
         self.render_calls.append((view.uid, model, kwargs, torch.is_grad_enabled()))
-        if model is not self.model and self.after is not None:
-            return {"render": self.after(view, model)}
+        if model is not self.model:
+            raise AssertionError("EGD must render the unmodified model")
         return {"render": self.images.get(view.uid, torch.zeros_like(view.original_image))}
 
     def contribute(self, view, model, pipe, mask):
         self.contribution_calls.append((view.uid, model, mask.clone(), torch.is_grad_enabled()))
         return self.contributions[view.uid]
 
-    def run(self, cameras=None, mode="vcd_vcp", pipe=None, **config):
+    def run(self, cameras=None, mode="vcd", pipe=None, **config):
         if cameras is None:
             cameras = [camera(index) for index in sorted(self.contributions)]
         return evaluate_density_control(
@@ -151,17 +125,17 @@ class DensityConfigurationTest(unittest.TestCase):
         self.assertEqual(DensityControlConfig.from_options(SimpleNamespace()), default)
         self.assertEqual(default.as_dict(), {
             "mode": "none", "error_quantile": 0.75,
-            "contribution_quantile": 0.10, "min_views": 2,
+            "min_views": 2,
         })
 
     def test_explicit_options_and_independent_modes(self):
         options = SimpleNamespace(
             density_control="vcp", vcd_error_quantile=0.6,
-            vcp_contribution_quantile=0.2, density_min_views=3,
+            density_min_views=3,
         )
         self.assertEqual(
             DensityControlConfig.from_options(options),
-            DensityControlConfig("vcp", 0.6, 0.2, 3),
+            DensityControlConfig("vcp", 0.6, 3),
         )
         for mode, vcd, vcp in (("vcd", True, False), ("vcp", False, True), ("vcd_vcp", True, True)):
             with self.subTest(mode=mode):
@@ -169,14 +143,13 @@ class DensityConfigurationTest(unittest.TestCase):
                 self.assertEqual(config.use_vcd, vcd)
                 self.assertEqual(config.use_vcp, vcp)
 
-    def test_invalid_mode_and_quantiles_are_rejected(self):
+    def test_invalid_mode_and_error_quantiles_are_rejected(self):
         for mode in ("all", "VCD", "", None):
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 DensityControlConfig(mode=mode)
-        for name in ("error_quantile", "contribution_quantile"):
-            for value in (0.0, 1.0, -0.1, 1.1, float("nan"), float("inf"), -float("inf")):
-                with self.subTest(name=name, value=value), self.assertRaises(ValueError):
-                    DensityControlConfig(**{name: value})
+        for value in (0.0, 1.0, -0.1, 1.1, float("nan"), float("inf"), -float("inf")):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                DensityControlConfig(error_quantile=value)
 
     def test_at_least_two_integer_views_are_required(self):
         for minimum in (True, False, 0, 1, -1, 2.0, "2"):
@@ -249,32 +222,19 @@ class DensityEvidenceTest(unittest.TestCase):
 
     def test_image_wide_splat_does_not_vote_without_error_concentration(self):
         mask = torch.tensor([[True, False], [False, False]])
-        vote, low, useful = view_evidence(
+        vote = view_evidence(
             torch.ones(3), torch.tensor([0.25, 0.5, 0.0]),
-            torch.tensor([True, True, False]), mask, 0.1,
+            torch.tensor([True, True, False]), mask,
         )
+        self.assertEqual(vote.dtype, torch.bool)
         self.assertEqual(vote.tolist(), [False, True, False])
-        self.assertEqual(low.tolist(), [False, False, False])
-        self.assertEqual(useful.tolist(), [True, True, False])
 
-    def test_equal_positive_contributions_never_force_a_lower_tail(self):
-        for quantile in (0.1, 0.5, 0.9):
-            with self.subTest(quantile=quantile):
-                _, low, useful = view_evidence(
-                    torch.ones(4), torch.zeros(4), torch.ones(4, dtype=torch.bool),
-                    torch.zeros(4, 4, dtype=torch.bool), quantile,
-                )
-                self.assertFalse(low.any())
-                self.assertTrue(useful.all())
-
-    def test_zero_mass_is_low_only_when_in_frustum_and_never_votes(self):
-        vote, low, useful = view_evidence(
+    def test_zero_mass_never_votes_even_when_in_frustum(self):
+        vote = view_evidence(
             torch.zeros(2), torch.zeros(2), torch.tensor([True, False]),
-            torch.zeros(4, 4, dtype=torch.bool), 0.1,
+            torch.zeros(4, 4, dtype=torch.bool),
         )
         self.assertEqual(vote.tolist(), [False, False])
-        self.assertEqual(low.tolist(), [True, False])
-        self.assertEqual(useful.tolist(), [False, False])
 
     def test_invalid_per_point_evidence_is_rejected(self):
         mask = torch.zeros(4, 4, dtype=torch.bool)
@@ -289,7 +249,7 @@ class DensityEvidenceTest(unittest.TestCase):
         )
         for values in examples:
             with self.subTest(values=values), self.assertRaises(ValueError):
-                view_evidence(*values, mask, 0.1)
+                view_evidence(*values, mask)
 
 
 @unittest.skipIf(torch is None, "PyTorch is unavailable")
@@ -319,130 +279,55 @@ class DensityControllerTest(unittest.TestCase):
 
     def test_insufficient_distinct_views_or_empty_model_are_conservative(self):
         for count, cameras in ((3, []), (3, [camera(0)]), (3, [camera(0), camera(0)]), (0, [camera(0), camera(1)])):
-            for mode in ("vcd", "vcp", "vcd_vcp"):
-                with self.subTest(count=count, views=len(cameras), mode=mode):
-                    probe = ProbeHarness(FakeGaussianModel(count), {})
-                    decision = probe.run(cameras, mode=mode)
-                    self.assertEqual(decision.prune_mask.numel(), count)
-                    self.assertFalse(decision.prune_mask.any())
-                    if mode != "vcp":
-                        self.assertFalse(decision.densify_mask.any())
-                    else:
-                        self.assertIsNone(decision.densify_mask)
-                    self.assertIn("insufficient", decision.diagnostics["skip_reason"])
-                    self.assertEqual(probe.render_calls, [])
+            with self.subTest(count=count, views=len(cameras)):
+                probe = ProbeHarness(FakeGaussianModel(count), {})
+                decision = probe.run(cameras)
+                self.assertEqual(decision.prune_mask.numel(), count)
+                self.assertFalse(decision.prune_mask.any())
+                self.assertFalse(decision.densify_mask.any())
+                self.assertIn("insufficient", decision.diagnostics["skip_reason"])
+                self.assertEqual(probe.render_calls, [])
 
-    def test_equal_positive_mass_proposes_no_pruning(self):
-        probe = ProbeHarness(FakeGaussianModel(), {index: evidence([1, 1, 1]) for index in range(2)})
-        decision = probe.run(mode="vcp")
-        self.assertIsNone(decision.densify_mask)
-        self.assertFalse(decision.prune_mask.any())
-        self.assertEqual(decision.diagnostics["vcp_check"], "no_candidates")
-        self.assertEqual(len(probe.render_calls), 2)
-
-    def test_one_useful_view_vetoes_multiple_low_contribution_views(self):
-        probe = ProbeHarness(FakeGaussianModel(), {
-            0: evidence([0.01, 1, 2]),
-            1: evidence([0.01, 1, 2]),
-            2: evidence([2, 1, 0.01]),
-        })
-        decision = probe.run(mode="vcp")
-        self.assertFalse(decision.prune_mask.any())
-        self.assertEqual(decision.diagnostics["vcp_candidates"], 0)
-        self.assertEqual(len(probe.render_calls), 3)
-
-    def test_unseen_and_single_view_points_are_not_pruned(self):
-        probe = ProbeHarness(FakeGaussianModel(4), {
-            0: evidence([0, 0, 0, 1], visible=[False, True, True, True]),
-            1: evidence([0, 0, 0, 1], visible=[False, False, True, True]),
-        })
-        decision = probe.run(mode="vcp")
-        self.assertEqual(decision.prune_mask.tolist(), [False, False, True, False])
-        self.assertEqual(decision.diagnostics["vcp_verified"], 1)
-
-    def test_zero_contribution_joint_removal_is_accepted_and_preserves_one_point(self):
+    def test_egd_only_renders_each_unmodified_training_view(self):
         model = FakeGaussianModel()
-        probe = ProbeHarness(model, {index: evidence([0, 0, 0]) for index in range(2)})
-        decision = probe.run(mode="vcp")
-        self.assertEqual(decision.prune_mask.tolist(), [False, True, True])
-        self.assertEqual(decision.diagnostics["vcp_check"], "accepted_all_training_views")
-        self.assertEqual(decision.diagnostics["vcp_verified"], 2)
-        proxies = [item[1] for item in probe.render_calls if item[1] is not model]
-        self.assertEqual(len(proxies), 2)
-        self.assertTrue(all(proxy.get_xyz.shape[0] == 1 for proxy in proxies))
-        self.assertEqual(model.get_xyz.shape[0], 3)
-
-    def test_single_gaussian_is_never_proposed_for_removal(self):
-        probe = ProbeHarness(FakeGaussianModel(1), {index: evidence([0]) for index in range(2)})
-        decision = probe.run(mode="vcp")
+        probe = ProbeHarness(model, {index: evidence([0, 1, 2]) for index in range(2)})
+        decision = probe.run()
         self.assertFalse(decision.prune_mask.any())
-        self.assertEqual(decision.diagnostics["vcp_candidates"], 0)
-        self.assertEqual(len(probe.render_calls), 2)
+        self.assertEqual([call[0] for call in probe.render_calls], [0, 1])
+        self.assertTrue(all(call[1] is model for call in probe.render_calls))
+        self.assertEqual(decision.diagnostics, {
+            "mode": "vcd", "input_count": 3, "evaluated_views": 2,
+            "vcd_supported": 0, "observed_in_multiple_views": 3,
+        })
 
-    def test_any_training_view_loss_increase_rejects_entire_batch(self):
-        model = FakeGaussianModel(4)
-        probe = ProbeHarness(model, {index: evidence([0.01, 0.02, 1, 2]) for index in range(3)},
-            after=lambda view, proxy: torch.full_like(view.original_image, 0.2 if view.uid == 1 else 0.0))
-        decision = probe.run(mode="vcp", contribution_quantile=0.5)
-        self.assertEqual(decision.diagnostics["vcp_candidates"], 2)
-        self.assertEqual(decision.diagnostics["vcp_verified"], 0)
-        self.assertEqual(decision.diagnostics["vcp_check"], "rejected_training_loss_increase")
-        self.assertGreater(decision.diagnostics["vcp_max_train_loss_delta"], 0)
-        self.assertFalse(decision.prune_mask.any())
-        self.assertEqual([item[0] for item in probe.render_calls if item[1] is not model], [0, 1, 2])
+    def test_legacy_pruning_modes_require_separate_controller_before_rendering(self):
+        for mode in ("vcp", "vcd_vcp"):
+            with self.subTest(mode=mode):
+                probe = ProbeHarness(FakeGaussianModel(), {})
+                with self.assertRaisesRegex(ValueError, "separate pruning controller"):
+                    probe.run(mode=mode)
+                self.assertEqual(probe.render_calls, [])
+                self.assertEqual(probe.contribution_calls, [])
 
-    def test_batch_is_checked_jointly_not_by_individually_harmless_deletions(self):
-        model = FakeGaussianModel(4)
-
-        def jointly_harmful(view, proxy):
-            removed = model.get_xyz.shape[0] - proxy.get_xyz.shape[0]
-            return torch.full_like(view.original_image, 0.3 if removed >= 2 else 0.0)
-
-        probe = ProbeHarness(model, {index: evidence([0.01, 0.02, 1, 2]) for index in range(2)}, after=jointly_harmful)
-        decision = probe.run(mode="vcp", contribution_quantile=0.5)
-        self.assertFalse(decision.prune_mask.any())
-        proxies = [item[1] for item in probe.render_calls if item[1] is not model]
-        self.assertEqual([proxy.get_xyz[:, 0].tolist() for proxy in proxies], [[2.0, 3.0], [2.0, 3.0]])
-
-    def test_harmless_lower_tail_batch_is_verified_without_mutating_model(self):
-        model = FakeGaussianModel(4)
-        probe = ProbeHarness(model, {index: evidence([0.01, 0.02, 1, 2]) for index in range(2)})
-        decision = probe.run(mode="vcp", contribution_quantile=0.5)
-        self.assertEqual(decision.prune_mask.tolist(), [True, True, False, False])
-        self.assertEqual(decision.diagnostics["vcp_max_train_loss_delta"], 0.0)
-        self.assertEqual(model.get_xyz[:, 0].tolist(), [0.0, 1.0, 2.0, 3.0])
-
-    def test_joint_removal_that_improves_every_view_is_accepted(self):
+    def test_legacy_loss_and_opacity_arguments_do_not_change_egd(self):
+        model = FakeGaussianModel()
         probe = ProbeHarness(
-            FakeGaussianModel(),
-            {index: evidence([0.01, 1, 2]) for index in range(2)},
-            images={index: torch.full((3, 4, 4), 0.2) for index in range(2)},
-            after=lambda view, proxy: torch.zeros_like(view.original_image),
+            model,
+            {index: evidence([1, 1, 1], [1, 0, 0]) for index in range(2)},
+            images={index: error_image() for index in range(2)},
         )
-        decision = probe.run(mode="vcp")
-        self.assertEqual(decision.prune_mask.tolist(), [True, False, False])
-        self.assertLess(decision.diagnostics["vcp_max_train_loss_delta"], 0.0)
-        self.assertEqual(decision.diagnostics["vcp_check"], "accepted_all_training_views")
+        expected = probe.run()
+        actual = evaluate_density_control(
+            model, [camera(0), camera(1)], SimpleNamespace(), torch.zeros(3),
+            DensityControlConfig("vcd"),
+            lambda_dssim=0.5, native_opacity_threshold=0.5,
+            render_fn=probe.render, contribution_fn=probe.contribute,
+        )
+        self.assertTrue(torch.equal(actual.densify_mask, expected.densify_mask))
+        self.assertTrue(torch.equal(actual.prune_mask, expected.prune_mask))
+        self.assertEqual(actual.diagnostics, expected.diagnostics)
 
-    def test_vcd_only_never_runs_pruning_verification(self):
-        probe = ProbeHarness(FakeGaussianModel(), {index: evidence([0, 1, 2]) for index in range(2)},
-            after=lambda view, proxy: (_ for _ in ()).throw(AssertionError("VCD cannot prune")))
-        decision = probe.run(mode="vcd")
-        self.assertFalse(decision.prune_mask.any())
-        self.assertEqual(decision.diagnostics["vcp_check"], "not_requested")
-        self.assertEqual(len(probe.render_calls), 2)
-
-    def test_combined_mode_protects_vcd_supported_points_from_vcp(self):
-        contributions = {index: evidence([0.01, 1, 2], [0.01, 0, 0]) for index in range(2)}
-        images = {index: error_image() for index in range(2)}
-        combined = ProbeHarness(FakeGaussianModel(), contributions, images).run()
-        self.assertEqual(combined.densify_mask.tolist(), [True, False, False])
-        self.assertFalse(combined.prune_mask.any())
-        vcp_only = ProbeHarness(FakeGaussianModel(), contributions, images).run(mode="vcp")
-        self.assertIsNone(vcp_only.densify_mask)
-        self.assertEqual(vcp_only.prune_mask.tolist(), [True, False, False])
-
-    def test_nonfinite_baseline_images_or_targets_disable_new_actions(self):
+    def test_nonfinite_images_or_targets_disable_egd(self):
         for invalid_target in (False, True):
             with self.subTest(invalid_target=invalid_target):
                 cameras = [camera(0), camera(1)]
@@ -472,27 +357,21 @@ class DensityControllerTest(unittest.TestCase):
                     self.assertEqual(decision.diagnostics["skip_reason"], "nonfinite_diagnostic_contribution")
 
     def test_numeric_contribution_exception_conservatively_discards_partial_evidence(self):
-        for mode in ("vcd", "vcp", "vcd_vcp"):
-            with self.subTest(mode=mode):
-                model = FakeGaussianModel()
-                probe = ProbeHarness(
-                    model,
-                    {index: evidence([0, 1, 1], [0, 1, 0]) for index in range(2)},
-                    {index: error_image() for index in range(2)},
-                )
-                with mock.patch.object(probe, "contribute", side_effect=[
-                    probe.contributions[0], FloatingPointError("nonfinite color gradient"),
-                ]) as contribute:
-                    decision = probe.run(mode=mode)
-                self.assertEqual(contribute.call_count, 2)
-                self.assertFalse(decision.prune_mask.any())
-                if mode == "vcp":
-                    self.assertIsNone(decision.densify_mask)
-                else:
-                    self.assertFalse(decision.densify_mask.any())
-                self.assertEqual(decision.diagnostics["skip_reason"], "nonfinite_diagnostic_contribution")
-                self.assertEqual(decision.diagnostics["vcp_verified"], 0)
-                self.assertTrue(all(call[1] is model for call in probe.render_calls))
+        model = FakeGaussianModel()
+        probe = ProbeHarness(
+            model,
+            {index: evidence([0, 1, 1], [0, 1, 0]) for index in range(2)},
+            {index: error_image() for index in range(2)},
+        )
+        with mock.patch.object(probe, "contribute", side_effect=[
+            probe.contributions[0], FloatingPointError("nonfinite color gradient"),
+        ]) as contribute:
+            decision = probe.run()
+        self.assertEqual(contribute.call_count, 2)
+        self.assertFalse(decision.prune_mask.any())
+        self.assertFalse(decision.densify_mask.any())
+        self.assertEqual(decision.diagnostics["skip_reason"], "nonfinite_diagnostic_contribution")
+        self.assertTrue(all(call[1] is model for call in probe.render_calls))
 
     def test_unrelated_contribution_runtime_error_is_not_silently_swallowed(self):
         probe = ProbeHarness(FakeGaussianModel(), {index: evidence([0, 1, 1]) for index in range(2)})
@@ -503,37 +382,6 @@ class DensityControllerTest(unittest.TestCase):
         self.assertIs(caught.exception, failure)
         contribute.assert_called_once()
         self.assertEqual(len(probe.render_calls), 1)
-
-    def test_nonfinite_pruned_render_rejects_batch(self):
-        probe = ProbeHarness(FakeGaussianModel(), {index: evidence([0, 1, 2]) for index in range(2)},
-            after=lambda view, proxy: torch.full_like(view.original_image, float("nan")))
-        decision = probe.run(mode="vcp")
-        self.assertFalse(decision.prune_mask.any())
-        self.assertEqual(decision.diagnostics["vcp_check"], "rejected_nonfinite")
-        self.assertEqual(decision.diagnostics["vcp_verified"], 0)
-
-    def test_finite_images_with_overflowed_baseline_loss_disable_actions(self):
-        # All pixel values are finite, but SSIM's squared terms overflow.
-        probe = ProbeHarness(
-            FakeGaussianModel(),
-            {index: evidence([0, 1, 1]) for index in range(2)},
-            images={0: torch.full((3, 4, 4), 1e20)},
-        )
-        decision = probe.run()
-        self.assertFalse(decision.densify_mask.any())
-        self.assertFalse(decision.prune_mask.any())
-        self.assertEqual(decision.diagnostics["skip_reason"], "nonfinite_diagnostic_loss")
-
-    def test_finite_pruned_images_with_overflowed_loss_reject_batch(self):
-        probe = ProbeHarness(
-            FakeGaussianModel(),
-            {index: evidence([0, 1, 1]) for index in range(2)},
-            after=lambda view, proxy: torch.full_like(view.original_image, 1e20),
-        )
-        decision = probe.run(mode="vcp")
-        self.assertFalse(decision.prune_mask.any())
-        self.assertEqual(decision.diagnostics["vcp_check"], "rejected_nonfinite")
-        self.assertEqual(decision.diagnostics["vcp_verified"], 0)
 
     def test_probe_preserves_rng_parameters_existing_gradients_and_input_evidence(self):
         model = FakeGaussianModel()
@@ -552,7 +400,7 @@ class DensityControllerTest(unittest.TestCase):
         python_rng = random.getstate()
         probe = ProbeHarness(model, contributions)
         decision = probe.run(cameras)
-        self.assertTrue(decision.prune_mask[0])
+        self.assertFalse(decision.prune_mask.any())
         self.assertTrue(torch.equal(torch_rng, torch.random.get_rng_state()))
         self.assertEqual(python_rng, random.getstate())
         for parameter, before, gradient in zip(parameters, values_before, gradients_before):
@@ -566,28 +414,7 @@ class DensityControllerTest(unittest.TestCase):
         self.assertTrue(all(not call[3] for call in probe.render_calls))
         self.assertTrue(all(not call[3] for call in probe.contribution_calls))
         self.assertTrue(all(call[2] == {"is_train": False} for call in probe.render_calls))
-        for _, proxy, _, _ in probe.render_calls:
-            if proxy is model:
-                continue
-            for attribute in ("get_xyz", "get_features", "get_opacity", "get_scaling", "get_rotation"):
-                self.assertFalse(getattr(proxy, attribute).requires_grad)
-                self.assertEqual(getattr(proxy, attribute).shape[0], 2)
-            self.assertEqual(proxy.active_sh_degree, model.active_sh_degree)
-            self.assertEqual(proxy.max_sh_degree, model.max_sh_degree)
-
-    def test_python_covariance_proxy_is_filtered_and_detached(self):
-        model = FakeGaussianModel()
-        probe = ProbeHarness(model, {index: evidence([0, 1, 1]) for index in range(2)})
-        decision = probe.run(mode="vcp", pipe=SimpleNamespace(compute_cov3D_python=True))
-        self.assertTrue(decision.prune_mask[0])
-        self.assertEqual(model.covariance_calls, 1)
-        proxies = [item[1] for item in probe.render_calls if item[1] is not model]
-        for proxy in proxies:
-            self.assertEqual(proxy.get_covariance().shape, (2, 6))
-            self.assertFalse(proxy.get_covariance().requires_grad)
-            with self.assertRaises(ValueError):
-                proxy.get_covariance(2.0)
-
+        self.assertTrue(all(call[1] is model for call in probe.render_calls))
 
 if __name__ == "__main__":
     unittest.main()

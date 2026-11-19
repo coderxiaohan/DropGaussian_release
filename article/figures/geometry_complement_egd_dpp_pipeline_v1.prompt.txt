@@ -1,0 +1,74 @@
+Generation mode: built-in image_gen.
+Reference: article/figures/geometry_complement_egd_tbp_pipeline_v3.png
+Purpose: Updated current-method diagram; old figures are preserved.
+
+Use case: scientific-educational.
+Asset type: publication-quality computer-vision paper pipeline figure.
+Task: Update and redesign the supplied older pipeline image into the CURRENT geometry-complementary initialization + EGD/DPP method. The supplied image is a layout and visual-style reference, not an algorithm to copy verbatim. Replace all TBP trial-pruning logic with the DPP logic below. Preserve the polished academic appearance, consistent bonsai scene, translucent ellipsoids, granular blue/orange point clouds, thin black orthogonal arrows, readable serif typography, rounded dashed panel borders, white background and pale blue/lavender/mint fills.
+Output: one complete wide high-resolution landscape image, approximately 3840 x 2048, clear at paper-page size. No logos, no watermark, no page or screen mockup. English labels only. Do not print "DropGaussian", "FastGS", "TBP", "VCD", "VCP" or "CAPA" anywhere. Use concise annotations balanced with illustrations; neither text-only boxes nor unlabeled illustrations.
+
+COMPOSITION:
+One broad upper panel occupying about 45% of height, headed "(a) Overall pipeline".
+Lower row occupying about 48%, with generous space for heading strips:
+Left panel (b), 36% width, grouped under "Module 1: Geometry-complementary initialization".
+Right area, 63% width, grouped under "Module 2: Multi-view density control"; contains panel (c) EGD on its left and panel (d) DPP on its right, DPP slightly wider than EGD.
+Keep all group headings in dedicated top strips, never on top of panel borders or illustrations. (c) and (d) must clearly belong to the SAME second module, not three independent modules.
+At most a tiny legend at upper right: blue dot "Base", orange dot "MVS", snowflake "Frozen". Violet outlines or a small shield may identify protected Gaussian lineages.
+
+UPPER OVERVIEW:
+Far left "Sparse views + poses": three coherent bonsai photo thumbnails with small camera frustums.
+Next stacked cards: upper "Base reconstruction" showing a blue structured bonsai point cloud; lower snowflake "MVSAnywhere" with "Depths + points", two colored depth thumbnails and an orange point cloud. Route input views into the frozen MVS card. The base reconstruction is an existing input asset; do not claim training-only SfM reconstruction.
+Both point-cloud cards feed a blue module box "Geometry complement (b)" with tiny subtitle "One-time initialization".
+Then a blue/orange Gaussian bonsai "Initial Gaussians".
+Then a generous grey enclosing area titled only "Optimization". Inside its upper lane:
+"Current Gaussians" -> "Render + loss" -> "Parameter update"; route ONE neat feedback arrow from parameter update back into current Gaussians, labelled "Iterate".
+Route sparse-view supervision along the top margin into "Render + loss", label "Training-image supervision". It must not point to initialization or pruning.
+Within the optimization box, below the ordinary optimization lane, show the density-control branch as an unmistakable left-to-right mini-pipeline:
+from Current Gaussians -> lavender "EGD (c)" -> mint "DPP (d)" -> a feedback path back into Current Gaussians.
+Add short subtitle beneath EGD: "Periodic densification".
+Add short subtitle beneath DPP: "Late-stage pruning".
+A short compact label along EGD -> DPP reads "Updated Gaussians"; a separate thin violet dashed arrow above this connection reads "Protection".
+Label this branch "Multi-view density control". A discreet line underneath says "Training-view diagnostics; dropout OFF". The EGD -> DPP sequence is schematic for late-pruning events, NOT an assertion that DPP runs every EGD event. Include the tiny phrase "DPP at pruning events" if needed, rather than adding a tangled bypass.
+Keep these two chips visually prominent, not buried in a generic density-update box. Do not draw parallel independent EGD and DPP arrows: DPP scores the post-densification population and uses protection from EGD.
+After training, one exit from the grey enclosure leads to "Optimized Gaussians" and then "Novel views", two coherent bonsai thumbnails. Avoid extra dangling arrows.
+
+LOWER PANEL (b), PALE BLUE:
+Header "(b) Geometry complement".
+Preserved upper path: blue "Base points" bonsai -> long arrow labelled "Preserve" -> plus/union node -> combined blue/orange ellipsoid bonsai labelled "Initial Gaussians".
+Complement lower path: orange "MVS candidates" -> depth-map/camera illustration labelled "Depth support" with subtitle "At least 2 views" -> an illustrated projected blue-point pattern with gaps being filled by orange points, labelled "Coverage-aware sampling" -> the same plus node.
+Route a thin side arrow from Base points into Coverage-aware sampling to show that novelty is measured relative to the base.
+Candidate illustration: only added orange points are selected; redundant candidates fade to grey. Do not move the preserved blue geometry. Use a small annotation "Fill coverage gaps".
+Bottom strip: "Preserve geometry; complement coverage".
+This shows the default reconstructed-base setting. Do NOT add a universal fallback to direct MVS or to random points. No reliability sigmoid, TPS, normals, surface alignment, frequency blocks or opacity-mapping module.
+
+LOWER PANEL (c), PALE LAVENDER:
+Header "(c) EGD"; subtitle "Error-Guided Densification".
+Use two different training-view bonsai thumbnails with their corresponding heatmaps to show "Multi-view error support".
+Below the thumbnails include the concise phrase "Normalized compositing contribution"; this means alpha-times-transmittance participation in high-error regions, not raw pixel counts and not a shared DPP score.
+Show the same small Gaussian highlighted at a leaf edge in two views, with two checkmarks, and a small "At least 2 views" caption.
+This support evidence feeds ONE input to an AND junction. A SEPARATE small box labelled "Gradient / size" feeds the other input independently. Never draw an arrow from the error-support evidence into the gradient/size box.
+AND -> "Clone / split", illustrated by a small ellipsoid cloning and a larger ellipsoid splitting into two smaller children. A nearby unsupported ellipsoid is unchanged.
+Mark the actual selected clone parent and child, and split children, with subtle violet protection outlines. A small shield tag says "Actual densification".
+A single thin violet dashed connector from these actual densification outputs crosses the gap to the protected-set input in panel (d), labelled "Same-event protection". This evidence arrow is separate from all black model-state arrows.
+Bottom strip: "Refine with multi-view support".
+Do not claim that a support vote proves a split will reduce loss.
+
+LOWER PANEL (d), PALE MINT, GIVE IT ADEQUATE WIDTH:
+Header "(d) DPP"; subtitle "Densification-Protected Pruning".
+Use a clean graphical flow with TWO candidate branches and ONE protective exclusion:
+At upper left a compact updated Gaussian cluster labelled "After EGD".
+Upper candidate branch: small training-image heatmaps -> "Error-linked score"; tiny caption "Pixel counts × view loss"; then tag "High score".
+Lower candidate branch from the Gaussian cluster: a few faint translucent ellipsoids labelled "Low opacity".
+Both High score and Low opacity converge into a small explicit "OR" node -> red/orange dashed-outline ellipsoids labelled "Candidates".
+Candidates flow into a small filter/funnel or exclusion box labelled "Exclude protected".
+A separate lower input into this filter is a tiny group of violet-outlined ellipsoids with shield, labelled "Protected lineage", receiving the violet dashed arrow from panel (c).
+Filter output -> updated cluster with fewer Gaussians labelled "Prune remaining". Show non-protected candidate ellipsoids fading with small crosses while violet-protected ones remain solid.
+If space permits, the only short set relation is "Prune = candidates − protected" in the bottom strip, otherwise show that exact text as the bottom strip.
+Discreet note immediately below the protected-set illustration: "This event only".
+Discreet footer: "Native cleanup unchanged".
+The candidate score counts high-error pixels actually blended by a Gaussian, weighted by each view's loss. It is not the EGD normalized contribution ratio. Use separate diagnostic illustrations; do not route the EGD support score directly into the DPP candidate-score box.
+The protected set is actual same-event clone/split lineage surviving native cleanup, not every high-error point and not all previously densified points.
+DPP is direct protected candidate removal: NO trial deletion, NO before/after test renders, NO loss-improvement decision diamond, NO claim of all-view loss guarantees.
+
+ARROW AND TYPOGRAPHY CHECK:
+Every arrow has a source and target. Solid black arrows = model/data flow; violet dashed arrow = same-event protection only. No arrows crossing text, no dangling strokes, no backwards arrows, no duplicate feedback loops. EGD support and gradient conditions are independent inputs to AND; high score and low opacity are independent inputs to OR. Prefer visuals over extra prose, but keep every important stage labelled. Titles large enough, no overlaps, generous margins. Two main modules must be obvious at first glance.

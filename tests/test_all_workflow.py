@@ -222,13 +222,84 @@ class AllWorkflowTest(unittest.TestCase):
                 self.assertEqual(calls[1]["args"][0], str(REPO_ROOT / "render.py"))
                 for call in calls[2:]:
                     self.assertEqual(Path(call["args"][0]).parent, ALL_ROOT)
-                # Completed outputs remain resumable after the relocation.
+                # Completed outputs must not be relabeled by a newer policy.
                 log.unlink()
                 result = self._run(ALL_ROOT / "train_mvsdrop_benchmark.sh", cwd=directory, env=env)
-                self.assertEqual(result.returncode, 0, result.stderr)
-                resumed = [json.loads(line)["kind"] for line in log.read_text().splitlines()]
-                self.assertNotIn("train.py", resumed)
-                self.assertNotIn("render.py", resumed)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("fresh OUTPUT_ROOT", result.stderr)
+                self.assertFalse(log.exists())
+
+    def test_shared_runner_rejects_historical_outputs_for_every_density_policy(self):
+        cases = (
+            ("dropgaussian", "none", ()),
+            ("mvs", "vcd", ()),
+            ("mvs", "vcp", ()),
+            ("mvs", "vcd_vcp", ()),
+            ("mvs", "none", ("--density_control", "vcp", "--vcp_strategy", "fastgs")),
+            ("mvs", "none", ("--density_control=vcd_vcp",)),
+            ("mvs", "none", ("--density_con=vcd_vcp",)),
+            ("mvs", "none", ("--density_c", "vcp")),
+        )
+        for mode, density, args in cases:
+            with self.subTest(mode=mode, density=density, args=args), tempfile.TemporaryDirectory() as directory:
+                _, env, log = self._fixture(directory)
+                output = Path(env["OUTPUT_ROOT"])
+                output.mkdir()
+                marker = output / ".historical-policy"
+                marker.write_text("unchanged", encoding="utf-8")
+                env.update(MODE=mode, DENSITY_CONTROL=density, DATA_ROOT="/missing-data")
+                result = self._run(ALL_ROOT / "train_mvsdrop_benchmark.sh", cwd=directory, env=env, args=args)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("fresh OUTPUT_ROOT", result.stderr)
+                self.assertFalse(log.exists())
+                self.assertEqual(list(output.iterdir()), [marker])
+                self.assertEqual(marker.read_text(), "unchanged")
+
+    def test_paired_runner_checks_later_output_before_starting_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, env, log = self._fixture(directory)
+            output = Path(env["OUTPUT_ROOT"])
+            later = output / "mvs/llff3"
+            later.mkdir(parents=True)
+            marker = later / "historical.txt"
+            marker.write_text("preserve", encoding="utf-8")
+            env.update(MODE="both", DATASET="llff", N_VIEWS="3", DATA_ROOT="/missing-data")
+            result = self._run(ALL_ROOT / "train_mvsdrop_benchmark.sh", cwd=directory, env=env)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("fresh OUTPUT_ROOT", result.stderr)
+            self.assertFalse((output / "dropgaussian").exists())
+            self.assertFalse(log.exists())
+            self.assertEqual(marker.read_text(), "preserve")
+
+    def test_shared_runner_rejects_file_and_symlink_output_targets(self):
+        for kind in ("file", "symlink"):
+            with self.subTest(kind=kind), tempfile.TemporaryDirectory() as directory:
+                _, env, log = self._fixture(directory)
+                output = Path(env["OUTPUT_ROOT"])
+                if kind == "file":
+                    output.write_text("preserve", encoding="utf-8")
+                else:
+                    target = Path(directory) / "untouched"
+                    target.mkdir()
+                    output.symlink_to(target, target_is_directory=True)
+                result = self._run(ALL_ROOT / "train_mvsdrop_benchmark.sh", cwd=directory, env=env)
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("real directory", result.stderr)
+                self.assertFalse(log.exists())
+                if kind == "file":
+                    self.assertEqual(output.read_text(), "preserve")
+                else:
+                    self.assertEqual(list(target.iterdir()), [])
+
+    def test_shared_runner_help_documents_fresh_output_policy_without_writes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            _, env, log = self._fixture(directory)
+            result = self._run(ALL_ROOT / "train_mvsdrop_benchmark.sh", cwd=directory, env=env, args=("--help",))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("including baseline runs", result.stdout)
+            self.assertIn("MODE=both checks both", result.stdout)
+            self.assertFalse(Path(env["OUTPUT_ROOT"]).exists())
+            self.assertFalse(log.exists())
 
     def test_summary_clis_work_outside_repository_without_pythonpath(self):
         with tempfile.TemporaryDirectory() as directory:

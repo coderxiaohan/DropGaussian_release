@@ -359,7 +359,7 @@ class GaussianModel:
         self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
         self.max_radii2D = torch.cat([self.max_radii2D, torch.zeros(self.get_xyz.shape[0]-self.max_radii2D.shape[0]).to(self.max_radii2D)])
 
-    def densify_and_split(self, grads, grad_threshold, scene_extent, N=2, selection_mask=None):
+    def densify_and_split(self, grads, grad_threshold, scene_extent, N=2, selection_mask=None, return_selection=False):
         n_init_points = self.get_xyz.shape[0]
         # Extract points that satisfy the gradient condition
         padded_grad = torch.zeros((n_init_points), device="cuda")
@@ -376,7 +376,7 @@ class GaussianModel:
             selected_pts_mask = torch.logical_and(selected_pts_mask, padded_selection)
             selected_count = int(selected_pts_mask.sum().item())
             if selected_count == 0:
-                return 0
+                return (0, selected_pts_mask) if return_selection else 0
 
         stds = self.get_scaling[selected_pts_mask].repeat(N,1)
         means =torch.zeros((stds.size(0), 3),device="cuda")
@@ -393,10 +393,12 @@ class GaussianModel:
 
         prune_filter = torch.cat((selected_pts_mask, torch.zeros(N * selected_pts_mask.sum(), device="cuda", dtype=bool)))
         self.prune_points(prune_filter)
+        if return_selection:
+            return int(selected_pts_mask.sum().item()), selected_pts_mask
         if selection_mask is not None:
             return selected_count
 
-    def densify_and_clone(self, grads, grad_threshold, scene_extent, selection_mask=None):
+    def densify_and_clone(self, grads, grad_threshold, scene_extent, selection_mask=None, return_selection=False):
         # Extract points that satisfy the gradient condition
         selected_pts_mask = torch.where(torch.norm(grads, dim=-1) >= grad_threshold, True, False)
         selected_pts_mask = torch.logical_and(selected_pts_mask,    # self.percent_dense = 0.01
@@ -406,7 +408,7 @@ class GaussianModel:
             selected_pts_mask = torch.logical_and(selected_pts_mask, selection_mask)
             selected_count = int(selected_pts_mask.sum().item())
             if selected_count == 0:
-                return 0
+                return (0, selected_pts_mask) if return_selection else 0
         
         new_xyz = self._xyz[selected_pts_mask]
         new_features_dc = self._features_dc[selected_pts_mask]
@@ -416,15 +418,65 @@ class GaussianModel:
         new_rotation = self._rotation[selected_pts_mask]
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation)
+        if return_selection:
+            return int(selected_pts_mask.sum().item()), selected_pts_mask
         if selection_mask is not None:
             return selected_count
 
-    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size):
+    def densify_and_prune(
+        self, max_grad, min_opacity, extent, max_screen_size,
+        protection_support=None,
+    ):
+        """Run native ADC, optionally reporting supported densification lineage.
+
+        ``protection_support`` is a boolean [N] mask for the input population.
+        It only tracks actual clone parents/children and split children for a
+        later pruning stage; it never gates native clone, split, or cleanup.
+        When supplied, return ``(summary, post_cleanup_protection)``. The
+        default path retains its original operations and ``None`` return.
+        """
+        if protection_support is not None:
+            original_count = int(self.get_xyz.shape[0])
+            self._validate_density_mask(
+                protection_support, original_count, "protection_support",
+            )
+            summary = {
+                "input_count": original_count,
+                "vcd_candidates": original_count,
+                "cloned": 0,
+                "split_parents": 0,
+                "split_children": 0,
+                "cleanup_pruned": 0,
+                "output_count": original_count,
+                "prune_all_guard": False,
+            }
         grads = self.xyz_gradient_accum / self.denom
         grads[grads.isnan()] = 0.0
 
-        self.densify_and_clone(grads, max_grad, extent)
-        self.densify_and_split(grads, max_grad, extent)
+        if protection_support is None:
+            self.densify_and_clone(grads, max_grad, extent)
+            self.densify_and_split(grads, max_grad, extent)
+        else:
+            # No selection_mask: even zero-selection events must execute all
+            # native topology/Adam operations and consume the same RNG stream.
+            summary["cloned"], clone_selection = self.densify_and_clone(
+                grads, max_grad, extent, return_selection=True,
+            )
+            cloned_support = protection_support[clone_selection]
+            protection = torch.cat((
+                clone_selection & protection_support, cloned_support,
+            ))
+            split_support = torch.cat((protection_support, cloned_support))
+            summary["split_parents"], split_selection = self.densify_and_split(
+                grads, max_grad, extent, return_selection=True,
+            )
+            summary["split_children"] = 2 * summary["split_parents"]
+            # Native split repeats the selected parent block twice, then
+            # removes those parents from the pre-split population.
+            protection = torch.cat((
+                protection[~split_selection],
+                split_support[split_selection].repeat(2),
+            ))
 
         prune_mask = (self.get_opacity < min_opacity).squeeze()
         if max_screen_size:
@@ -434,6 +486,10 @@ class GaussianModel:
         self.prune_points(prune_mask)
 
         torch.cuda.empty_cache()
+        if protection_support is not None:
+            summary["cleanup_pruned"] = int(prune_mask.sum().item())
+            summary["output_count"] = int(self.get_xyz.shape[0])
+            return summary, protection[~prune_mask.reshape(-1)]
 
     def _validate_density_mask(self, mask, count, name):
         if not isinstance(mask, torch.Tensor):
@@ -470,16 +526,19 @@ class GaussianModel:
     @torch.no_grad()
     def densify_and_prune_view_consistent(
         self, max_grad, min_opacity, extent, max_screen_size,
-        densify_mask=None, prune_mask=None,
+        densify_mask=None, *,
+        return_densify_protection=False,
     ):
-        """Apply train-view decisions to the *original* population of an event.
+        """Apply EGD selection to the *original* population of an event.
 
-        ``densify_mask`` gates the original gradient/size clone-split rules;
-        ``prune_mask`` requests direct VCP removal. Both are boolean [N]
-        tensors on the model device. VCP wins if their supports overlap.
+        ``densify_mask`` is a boolean [N] tensor on the model device that gates
+        the original gradient/size clone-split rules.
         Newborn Gaussians are never subject to stale original-row decisions.
         Ordinary low-opacity/size cleanup remains active. No persistent
         statistics are added, so legacy checkpoints retain their format.
+        Opt-in ``return_densify_protection`` returns ``(summary, mask)`` with
+        a post-cleanup mask of actual clone parents/newborns and split children.
+        It records this event only, and never changes any removal decision.
         """
         original_count = int(self.get_xyz.shape[0])
         device = self.get_xyz.device
@@ -487,16 +546,9 @@ class GaussianModel:
             densify_mask = torch.ones(original_count, dtype=torch.bool, device=device)
         else:
             self._validate_density_mask(densify_mask, original_count, "densify_mask")
-        if prune_mask is None:
-            prune_mask = torch.zeros(original_count, dtype=torch.bool, device=device)
-        else:
-            self._validate_density_mask(prune_mask, original_count, "prune_mask")
-        densify_mask = densify_mask & ~prune_mask
         summary = {
             "input_count": original_count,
             "vcd_candidates": int(densify_mask.sum().item()),
-            "vcp_requested": int(prune_mask.sum().item()),
-            "vcp_pruned": 0,
             "cloned": 0,
             "split_parents": 0,
             "split_children": 0,
@@ -505,27 +557,42 @@ class GaussianModel:
             "prune_all_guard": False,
         }
         if original_count == 0:
+            if return_densify_protection:
+                return summary, torch.zeros(0, dtype=torch.bool, device=device)
             return summary
 
         grads = torch.nan_to_num(
             self.xyz_gradient_accum / self.denom,
             nan=0.0, posinf=0.0, neginf=0.0,
         )
-        prune_mask, protected = self._protect_last_density_point(prune_mask)
-        summary["prune_all_guard"] = protected
-        summary["vcp_pruned"] = int(prune_mask.sum().item())
-        if summary["vcp_pruned"]:
-            keep_mask = ~prune_mask
-            grads = grads[keep_mask]
-            densify_mask = densify_mask[keep_mask]
-            self.prune_points(prune_mask)
 
-        summary["cloned"] = self.densify_and_clone(
-            grads, max_grad, extent, selection_mask=densify_mask,
-        )
-        summary["split_parents"] = self.densify_and_split(
-            grads, max_grad, extent, selection_mask=densify_mask,
-        )
+        if return_densify_protection:
+            summary["cloned"], clone_selection = self.densify_and_clone(
+                grads, max_grad, extent, selection_mask=densify_mask,
+                return_selection=True,
+            )
+            # Clone appends selected rows; both parent and child are protected.
+            protection = torch.cat((
+                clone_selection,
+                torch.ones(summary["cloned"], dtype=torch.bool, device=device),
+            ))
+            summary["split_parents"], split_selection = self.densify_and_split(
+                grads, max_grad, extent, selection_mask=densify_mask,
+                return_selection=True,
+            )
+            # Split removes its selected parents, then appends two children per
+            # parent. The returned selection uses the exact pre-split ordering.
+            protection = torch.cat((
+                protection[~split_selection],
+                torch.ones(2 * summary["split_parents"], dtype=torch.bool, device=device),
+            ))
+        else:
+            summary["cloned"] = self.densify_and_clone(
+                grads, max_grad, extent, selection_mask=densify_mask,
+            )
+            summary["split_parents"] = self.densify_and_split(
+                grads, max_grad, extent, selection_mask=densify_mask,
+            )
         summary["split_children"] = 2 * summary["split_parents"]
 
         cleanup_mask = (self.get_opacity < min_opacity).flatten()
@@ -540,6 +607,8 @@ class GaussianModel:
         summary["cleanup_pruned"] = int(cleanup_mask.sum().item())
         if summary["cleanup_pruned"]:
             self.prune_points(cleanup_mask)
+            if return_densify_protection:
+                protection = protection[~cleanup_mask]
 
         # Legacy ADC replaces every Parameter even for empty topology edits,
         # discarding this iteration's pending gradients before optimizer.step.
@@ -551,6 +620,8 @@ class GaussianModel:
         self.max_radii2D.zero_()
         summary["output_count"] = int(self.get_xyz.shape[0])
         torch.cuda.empty_cache()
+        if return_densify_protection:
+            return summary, protection
         return summary
 
     def add_densification_stats(self, viewspace_point_tensor, update_filter):

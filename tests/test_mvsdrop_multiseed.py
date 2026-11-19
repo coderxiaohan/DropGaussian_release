@@ -104,6 +104,44 @@ class MVSDropMultiSeedTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "protocol mismatch"):
                     collect(root, (1,))
 
+    @staticmethod
+    def _use_split_density(root, seed, scenes=None, protected=True):
+        for scene in SCENES["llff"] if scenes is None else scenes:
+            path = root / f"seed_{seed}/mvs/llff3/{scene}/manifest.json"
+            manifest = json.loads(path.read_text(encoding="utf-8"))
+            manifest["density_control"] = {
+                "config": {"mode": "vcd"}, "requested_mode": "vcd_vcp",
+                "pruning_strategy": "fastgs",
+            }
+            manifest["fastgs_pruning"] = {"config": {
+                "strategy": "fastgs", "protect_egd": protected, "dpp_only": False,
+            }}
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    def test_current_egd_dpp_manifest_uses_requested_and_effective_modes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self._write_setting(root, 1, "dropgaussian")
+            self._write_setting(root, 1, "mvs")
+            self._use_split_density(root, 1)
+            rows, _ = collect(root, (1,))
+            self.assertTrue(rows[0]["complete"])
+            self.assertEqual(rows[0]["delta_psnr"], 1.0)
+            self._use_split_density(root, 1, protected=False)
+            with self.assertRaisesRegex(ValueError, "protocol mismatch"):
+                collect(root, (1,))
+
+    def test_historical_and_current_controllers_cannot_be_mixed(self):
+        for scope in ("scenes", "seeds"):
+            with self.subTest(scope=scope), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                for seed in (1, 2):
+                    self._write_setting(root, seed, "dropgaussian")
+                    self._write_setting(root, seed, "mvs")
+                self._use_split_density(root, 1, scenes=["fern"] if scope == "scenes" else None)
+                with self.assertRaisesRegex(ValueError, "different density strategies"):
+                    collect(root, (1, 2))
+
     def test_method_setting_requires_its_own_measured_branch(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

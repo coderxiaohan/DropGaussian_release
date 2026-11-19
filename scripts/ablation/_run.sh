@@ -10,14 +10,14 @@ dataset=${2:?A dataset is required}
 shift 2
 
 complement=0
+use_dpp=0
 case "$variant" in
     baseline) density=none ;;
     complement_only) complement=1; density=none ;;
     egd_only) density=vcd ;;
-    tbp_only) density=vcp ;;
+    dpp_only) density=vcp; use_dpp=1 ;;
+    egd_dpp) density=vcd_vcp; use_dpp=1 ;;
     complement_egd) complement=1; density=vcd ;;
-    complement_tbp) complement=1; density=vcp ;;
-    egd_tbp) density=vcd_vcp ;;
     *) echo "Unknown ablation variant: $variant" >&2; exit 2 ;;
 esac
 case "$dataset" in
@@ -37,17 +37,25 @@ while (( $# )); do
                 "Usage: bash scripts/ablation/${variant}/train_${dataset}.sh [--dry-run] [train.py arguments...]" \
                 '' \
                 "Fixed variant: ${variant}; geometry complement=${complement}; density_control=${density}." \
-                'EGD = vcd, TBP = vcp; none retains the original DropGaussian density control.' \
+                'EGD = vcd; DPP uses vcp with the fastgs strategy and same-event protection.' \
+                'DPP-only fixes vcp + fastgs strategy + same-event protection + --dpp_only.' \
+                'DPP-only uses base initialization, native ADC throughout, and no MVS.' \
+                'Its same-event multiview support is used only for late-pruning protection, not EGD gating.' \
+                'EGD+DPP uses base initialization, active EGD gating and protected DPP; no MVS or --dpp_only.' \
+                'none retains the original DropGaussian density control.' \
                 'Only the selected modules change; DropGaussian regularization remains enabled.' \
                 'Complement means retaining reconstructed base geometry and adding coverage-selected MVS points,' \
                 'not direct replacement by MVS. Missing reconstructed geometry follows the full-method fallback.' \
                 'Blender always uses original random initialization (10000 points), without MVS caches.' \
-                'On Blender: complement_only=baseline, complement_egd=egd_only, complement_tbp=tbp_only;' \
-                'egd_tbp is equivalent to the current complete-method Blender policy.' \
+                'On Blender: complement_only=baseline, complement_egd=egd_only;' \
+                'egd_dpp is equivalent to the full-method Blender policy.' \
                 "Defaults: all configured ${dataset} scenes, ${default_views} training views, 10000 iterations, GPU 0." \
                 'All scenes does not mean all images are used for training; N_VIEWS selects sparse views.' \
                 'Overrides: N_VIEWS, GPU_ID, SCENES, DATA_ROOT, ITERATIONS, RESOLUTION,' \
                 'PYTHON_BIN, OUTPUT_ROOT, DTU_MASK_ROOT, SEED, PORT.' \
+                'DPP variants (dpp_only, egd_dpp) numeric settings: DPP_PRUNE_INTERVAL=8000, DPP_LOSS_THRESHOLD=0.1,' \
+                'DPP_PRUNE_THRESHOLD=0.9, DPP_OPACITY_THRESHOLD=0.1; Blender requires N_VIEWS <= 8.' \
+                'Direct DPP_ONLY, FASTGS_* and VCP_STRATEGY environment settings are disabled.' \
                 'Real-dataset complementary variants also accept MVS_INIT_PATH and numeric MVS_COMPLEMENT_* settings:' \
                 'MAX_POINTS=100000, TOTAL_POINTS=0, CANDIDATE_POINTS=500000, COVERAGE_PIXELS=2.0, DEPTH_SCALE=0.02.' \
                 'TOTAL_POINTS=0 keeps all base points; a positive cap may subsample base geometry.' \
@@ -69,7 +77,7 @@ while (( $# )); do
         -s*) echo "Use DATA_ROOT and SCENES, not $argument_name; this launcher owns source paths." >&2; exit 2 ;;
         -r*) echo "Use RESOLUTION, not $argument_name; training and evaluation must agree." >&2; exit 2 ;;
         -i*|-w*) echo "Image-loading and background protocol options are fixed." >&2; exit 2 ;;
-        --mvs*|--density*|--vcd*|--vcp*)
+        --mvs*|--density*|--vcd*|--vcp*|--dpp*|--fastgs*)
             echo "Method CLI overrides are disabled; select the appropriate ablation directory." >&2
             exit 2
             ;;
@@ -85,7 +93,9 @@ while (( $# )); do
                 --opacity_lr --scaling_lr --rotation_lr --percent_dense --lambda_dssim \
                 --densification_interval --opacity_reset_interval --densify_from_iter \
                 --densify_until_iter --densify_grad_threshold --random_background \
-                --vcd_error_quantile --vcp_contribution_quantile; do
+                --vcd_error_quantile --vcp_strategy --dpp_only \
+                --fastgs_prune_interval --fastgs_loss_threshold --fastgs_prune_threshold \
+                --fastgs_opacity_threshold --fastgs_protect_egd; do
                 if [[ "$reserved" == "$argument_name"* ]]; then
                     echo "This launcher owns $reserved; use documented environment settings, not $argument_name." >&2
                     exit 2
@@ -95,6 +105,21 @@ while (( $# )); do
     esac
     train_args+=("$1")
     shift
+done
+
+# These method variables are consumed by other launchers, never this fixed
+# ablation. Reject inherited values rather than silently mislabel a run.
+for name in ${!FASTGS_@} ${!DPP_@} ${!TBP_@} VCP_STRATEGY; do
+    [[ -v "$name" ]] || continue
+    case "$name" in
+        DPP_PRUNE_INTERVAL|DPP_LOSS_THRESHOLD|DPP_PRUNE_THRESHOLD|DPP_OPACITY_THRESHOLD)
+            if [[ "$use_dpp" == 1 ]]; then
+                continue
+            fi
+            ;;
+    esac
+    echo "${variant} does not accept ${name}; use its documented fixed-policy settings." >&2
+    exit 2
 done
 
 logical_mode=dropgaussian
@@ -120,6 +145,11 @@ n_views=${N_VIEWS:-$default_views}
 gpu_id=${GPU_ID:-0}
 if ! [[ "$n_views" =~ ^[1-9][0-9]*$ ]]; then
     echo "N_VIEWS must be one positive integer." >&2; exit 2
+fi
+if [[ "$use_dpp" == 1 && "$dataset" == blender ]] && \
+        { [[ ${#n_views} -gt 1 ]] || [[ "$n_views" -gt 8 ]]; }; then
+    echo "${variant}/Blender requires N_VIEWS <= 8; larger values would mislabel the sparse-view protocol." >&2
+    exit 2
 fi
 if ! [[ "$gpu_id" =~ ^[0-9]+$ ]]; then
     echo "GPU_ID must be one non-negative integer." >&2; exit 2
@@ -169,6 +199,31 @@ elif [[ "$complement" == 1 ]]; then
         --mvs_complement_candidate_points "$candidate_points"
         --mvs_complement_coverage_pixels "$coverage_pixels"
         --mvs_complement_depth_scale "$depth_scale")
+fi
+
+if [[ "$use_dpp" == 1 ]]; then
+    dpp_interval=${DPP_PRUNE_INTERVAL:-8000}
+    dpp_loss=${DPP_LOSS_THRESHOLD:-0.1}
+    dpp_score=${DPP_PRUNE_THRESHOLD:-0.9}
+    dpp_opacity=${DPP_OPACITY_THRESHOLD:-0.1}
+    if ! [[ "$dpp_interval" =~ ^[1-9][0-9]*$ ]]; then
+        echo "DPP_PRUNE_INTERVAL must be a positive integer." >&2; exit 2
+    fi
+    for name in dpp_loss dpp_score dpp_opacity; do
+        if ! [[ "${!name}" =~ ^([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][+-]?[0-9]+)?$ ]] || \
+                ! awk -v value="${!name}" 'BEGIN { exit !(value + 0 >= 0 && value + 0 <= 1) }'; then
+            echo "DPP thresholds must be finite numbers in [0, 1]: $name=${!name}." >&2
+            exit 2
+        fi
+    done
+    if [[ "$variant" == dpp_only ]]; then
+        method_args+=(--dpp_only)
+    fi
+    method_args+=(--vcp_strategy fastgs --fastgs_protect_egd
+        --fastgs_prune_interval "$dpp_interval"
+        --fastgs_loss_threshold "$dpp_loss"
+        --fastgs_prune_threshold "$dpp_score"
+        --fastgs_opacity_threshold "$dpp_opacity")
 fi
 
 output_parent=${OUTPUT_ROOT:-$repo_root/output/ablation}

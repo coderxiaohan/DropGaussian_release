@@ -12,7 +12,7 @@ for argument in "$@"; do
             printf '%s\n' \
                 'Usage: bash scripts/mvs_complement/train_all_views.sh [--dry-run] [train.py arguments...]' \
                 '' \
-                'Real datasets: geometry-preserving MVS initialization + unchanged DropGaussian and VCD/VCP (EGD/TBP).' \
+                'Real datasets: geometry-preserving MVS initialization + DropGaussian and protected EGD/DPP.' \
                 'Blender main method: original DropGaussian random initialization (10000 points), without MVS.' \
                 'MVS_COMPLEMENT_MODE selects coverage (default), concat, balanced, or none.' \
                 'Blender coverage/concat/balanced ignore MVS budgets/selection settings and need no MVS cache or depth preflight.' \
@@ -26,6 +26,7 @@ for argument in "$@"; do
                 'Baseline geometry training-view-only provenance is not independently verified.' \
                 'GPU priority: GPU_<DATASET>_<VIEWS> > GPU_<DATASET> > GPU_ID > 0.' \
                 'OUTPUT_ROOT is a parent; Blender random adds blender_random/blender<views>.' \
+                'Default parent: <repo>/output/mvs_complement_dpp; historical outputs are retained separately.' \
                 'MVS settings add <mode>/<keep_base or budgetN>/<dataset><views>.' \
                 'MATRIX replaces inherited N_VIEWS. Use N_VIEWS with individual dataset scripts.' \
                 'DATA_ROOT, SCENES and explicit cache paths should only be used for a compatible subset.' \

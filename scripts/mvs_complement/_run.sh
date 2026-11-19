@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Geometry-complement initialization on real datasets, original random
-# initialization on Blender. Downstream DropGaussian and VCD/VCP are shared.
+# initialization on Blender, with EGD and protected DPP pruning.
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 repo_root=$(cd "$script_dir/../.." && pwd)
 dataset=${1:?A dataset is required}
@@ -23,7 +23,7 @@ while (( $# )); do
         -s*) echo "Use DATA_ROOT and SCENES, not $argument_name; this wrapper owns source paths." >&2; exit 2 ;;
         -r*) echo "Use RESOLUTION, not $argument_name; training and evaluation must agree." >&2; exit 2 ;;
         -i*|-w*) echo "This wrapper fixes image-loading and background protocol options." >&2; exit 2 ;;
-        --mvs*|--density*|--vcd*|--vcp*)
+        --mvs*|--density*|--vcd*|--vcp*|--dpp*|--fastgs*)
             echo "Use MVS_COMPLEMENT_* or supported MVS_INIT_* environment settings; method CLI overrides are disabled." >&2
             exit 2
             ;;
@@ -38,7 +38,9 @@ while (( $# )); do
                 --opacity_lr --scaling_lr --rotation_lr --percent_dense --lambda_dssim \
                 --densification_interval --opacity_reset_interval --densify_from_iter \
                 --densify_until_iter --densify_grad_threshold --random_background \
-                --vcd_error_quantile --vcp_contribution_quantile; do
+                --vcd_error_quantile --vcp_strategy --dpp_only --fastgs_prune_interval \
+                --fastgs_loss_threshold --fastgs_prune_threshold --fastgs_opacity_threshold \
+                --fastgs_protect_egd; do
                 if [[ "$reserved" == "$argument_name"* ]]; then
                     echo "This wrapper owns $reserved; use its documented environment settings, not $argument_name." >&2
                     exit 2
@@ -54,7 +56,9 @@ while (( $# )); do
                 '' \
                 'Real datasets: preserve reconstructed geometry and use MVS to complement training-view coverage.' \
                 'Blender main method: original DropGaussian random initialization (10000 points), without MVS.' \
-                'Only initialization changes; DropGaussian and VCD/VCP (EGD/TBP) remain unchanged.' \
+                'DropGaussian with EGD/DPP: error-guided densification and same-event-protected count-based pruning.' \
+                'Fixes --vcp_strategy fastgs --fastgs_protect_egd; uses the training defaults for pruning thresholds and schedule.' \
+                'FASTGS_* and DPP_* environment overrides are disabled here; configurable coverage runs use scripts/mvs_complement_egd_fastgs/.' \
                 "Defaults: all configured ${dataset} scenes, ${default_views} training views, 10000 iterations, GPU 0." \
                 'All scenes does not mean all input views; N_VIEWS controls sparse-view training.' \
                 'MVS_COMPLEMENT_MODE: coverage (default), concat, balanced, or none.' \
@@ -86,7 +90,8 @@ while (( $# )); do
                 'Use environment settings, not CLI source/model/dataset/iteration/resolution/method options.' \
                 'OUTPUT_ROOT is a parent: Blender random uses <root>/blender_random/blender<views>.' \
                 'MVS branches use <root>/<mode>/<keep_base or budgetN>/<dataset><views>.' \
-                'Default parent: <repo>/output/mvs_complement. Existing nonempty settings are never reused.' \
+                'Default parent: <repo>/output/mvs_complement_dpp. Existing nonempty settings are never reused.' \
+                'Historical results under output/mvs_complement remain unchanged and are not DPP results.' \
                 "Example: GPU_ID=0 N_VIEWS=${default_views} bash scripts/mvs_complement/train_${dataset}.sh" \
                 'DRY_RUN=1 or --dry-run prints dispatch only, without data checks or output writes.' \
                 'Train -> render -> evaluate -> summarize uses the existing common runner.'
@@ -95,6 +100,15 @@ while (( $# )); do
         --) echo "The -- option separator is not supported; pass train.py arguments directly." >&2; exit 2 ;;
         *) train_args+=("$1"); shift ;;
     esac
+done
+
+if [[ ${VCP_STRATEGY+x} && "$VCP_STRATEGY" != fastgs ]]; then
+    echo "This method fixes VCP_STRATEGY=fastgs; unset the conflicting value." >&2
+    exit 2
+fi
+for name in ${!TBP_@} ${!FASTGS_@} ${!DPP_@}; do
+    echo "${name} is not supported by this launcher; pruning uses the documented fixed defaults." >&2
+    exit 2
 done
 
 complement_mode=${MVS_COMPLEMENT_MODE:-coverage}
@@ -140,7 +154,7 @@ case "$dry_run" in
     *) echo "DRY_RUN must be 0 or 1." >&2; exit 2 ;;
 esac
 
-output_parent=${OUTPUT_ROOT:-$repo_root/output/mvs_complement}
+output_parent=${OUTPUT_ROOT:-$repo_root/output/mvs_complement_dpp}
 if [[ "$blender_random" == 1 ]]; then
     setting_output="${output_parent%/}/blender_random/blender${n_views}"
 else
@@ -164,7 +178,7 @@ if [[ "$dry_run" == 0 && ( -e "$setting_output" || -L "$setting_output" ) ]]; th
     fi
 fi
 if [[ "$blender_random" == 1 ]]; then
-    echo "Blender main method: original DropGaussian random initialization (10000 points), no MVS/cache requirement; VCD/VCP (EGD/TBP) retained." >&2
+    echo "Blender main method: original DropGaussian random initialization (10000 points), no MVS/cache requirement; EGD/DPP enabled." >&2
     echo "Blender ignores MVS_COMPLEMENT_* budgets/selection settings and MVS_INIT_* settings; use MVS_COMPLEMENT_MODE=none for the direct-MVS ablation." >&2
     command=(env MODE=dropgaussian DENSITY_CONTROL=vcd_vcp
         "N_VIEWS=$n_views" "GPU_ID=$gpu_id" "OUTPUT_ROOT=$setting_output"
@@ -187,6 +201,7 @@ else
         --mvs_complement_coverage_pixels "$coverage_pixels"
         --mvs_complement_depth_scale "$depth_scale")
 fi
+command+=(--vcp_strategy fastgs --fastgs_protect_egd)
 if [[ "$dry_run" == 1 ]]; then
     printf '%q ' "${command[@]}"
     printf '\n'

@@ -12,6 +12,38 @@ gpu_id=${GPU_ID:-0}
 seed=${SEED:-0}
 port=${PORT:-0}
 
+for argument in "$@"; do
+    if [[ "$argument" == --help || "$argument" == -h ]]; then
+        printf '%s\n' \
+            'Usage: MODE=mvs DATASET=llff bash scripts/all/train_mvsdrop_benchmark.sh [train.py arguments...]' \
+            'MODE: mvs, dropgaussian, or both; configure DATASET, N_VIEWS, SCENES, GPU_ID and OUTPUT_ROOT.' \
+            'Every run requires a fresh or empty output setting directory, including baseline runs.' \
+            'Existing nonempty directories, files and symlinks are rejected before training, rendering or summary writes.' \
+            'MODE=both checks both setting directories before either method starts.' \
+            'Use a new OUTPUT_ROOT for repeats; historical results are never reused under a new pruning policy.'
+        exit 0
+    fi
+done
+
+# All policies use this check, including CLI density/strategy overrides. This
+# prevents legacy result folders from being reused under the current algorithm.
+require_fresh_output() (
+    setting_output=$1
+    if [[ -e "$setting_output" || -L "$setting_output" ]]; then
+        if [[ -L "$setting_output" || ! -d "$setting_output" ]]; then
+            echo "Output setting must be a real directory: $setting_output" >&2
+            exit 2
+        fi
+        shopt -s nullglob dotglob
+        output_entries=("$setting_output"/*)
+        if (( ${#output_entries[@]} )); then
+            echo "Output setting directory is nonempty: $setting_output" >&2
+            echo "Use a fresh OUTPUT_ROOT; existing results cannot be reused under a different training policy." >&2
+            exit 2
+        fi
+    fi
+)
+
 if [[ "$benchmark_mode" != "dropgaussian" && "$benchmark_mode" != "mvs" && "$benchmark_mode" != "both" ]]; then
     echo "MODE must be dropgaussian, mvs, or both; adaptive mvsdrop is not available in this branch (got: $benchmark_mode)." >&2
     exit 2
@@ -78,6 +110,9 @@ esac
 if [[ "$benchmark_mode" == "both" ]]; then
     paired_root=${OUTPUT_ROOT:-$repo_root/output/mvs_vcd_vcp/paired}
     for paired_mode in dropgaussian mvs; do
+        require_fresh_output "$paired_root/$paired_mode/${dataset}${n_views}"
+    done
+    for paired_mode in dropgaussian mvs; do
         MODE="$paired_mode" OUTPUT_ROOT="$paired_root/$paired_mode/${dataset}${n_views}" \
             bash "$script_dir/train_mvsdrop_benchmark.sh" "${train_args[@]}"
     done
@@ -99,6 +134,7 @@ fi
 
 read -r -a scenes <<< "${SCENES:-$default_scenes}"
 output_root=${OUTPUT_ROOT:-$repo_root/output/mvs_vcd_vcp/final/$benchmark_mode/${dataset}${n_views}}
+require_fresh_output "$output_root"
 mkdir -p "$output_root"
 
 test_iterations=()

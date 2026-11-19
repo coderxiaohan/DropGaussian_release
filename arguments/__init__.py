@@ -108,7 +108,17 @@ class OptimizationParams(ParamGroup):
         self.density_control = "vcd_vcp"
         self.density_min_views = 2
         self.vcd_error_quantile = 0.75
-        self.vcp_contribution_quantile = 0.10
+        # Auto: combined density control uses EGD-protected DPP; none/vcd
+        # disable late pruning. Explicit fastgs keeps the comparison rule,
+        # with protection enabled only by fastgs_protect_egd.
+        self.vcp_strategy = "auto"
+        self.fastgs_prune_interval = 8000
+        self.fastgs_loss_threshold = 0.1
+        self.fastgs_prune_threshold = 0.9
+        self.fastgs_opacity_threshold = 0.1
+        self.fastgs_protect_egd = False
+        # Ablation: native ADC, shared multiview evidence used only by DPP.
+        self.dpp_only = False
         super().__init__(parser, "Optimization Parameters")
 
 def get_combined_args(parser : ArgumentParser):

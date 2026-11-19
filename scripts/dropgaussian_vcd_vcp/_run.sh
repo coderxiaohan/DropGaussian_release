@@ -30,7 +30,7 @@ for argument in "$@"; do
             'Overrides: N_VIEWS, GPU_ID, DATA_ROOT, SCENES, ITERATIONS, RESOLUTION,' \
             'PYTHON_BIN, OUTPUT_ROOT, SEED, PORT, DTU_MASK_ROOT.' \
             'Default output: output/dropgaussian_<DENSITY_CONTROL>/<dataset><views>.' \
-            'Use a fresh OUTPUT_ROOT when changing settings beyond dataset/views/density mode.'
+            'Every run requires a fresh or empty OUTPUT_ROOT; nonempty settings are rejected before any writes.'
         exit 0
     fi
 done

@@ -17,10 +17,7 @@ VARIANTS = {
     "baseline": (False, "none"),
     "complement_only": (True, "none"),
     "egd_only": (False, "vcd"),
-    "tbp_only": (False, "vcp"),
     "complement_egd": (True, "vcd"),
-    "complement_tbp": (True, "vcp"),
-    "egd_tbp": (False, "vcd_vcp"),
 }
 DATASETS = {
     "llff": (3, 8, "fern"),
@@ -38,14 +35,14 @@ ENV_KEYS = {
     "MODE", "DENSITY_CONTROL", "DATASET", "DATA_ROOT", "SCENES", "N_VIEWS",
     "ITERATIONS", "RESOLUTION", "OUTPUT_ROOT", "PYTHON_BIN", "SEED", "PORT",
     "DTU_MASK_ROOT", "CALL_LOG", "FAKE_FAIL_TRAIN", "DRY_RUN", "MATRIX", "MODES",
-    "CUDA_VISIBLE_DEVICES",
+    "CUDA_VISIBLE_DEVICES", "VCP_STRATEGY",
 }
 
 
 def clean_environment():
     return {
         key: value for key, value in os.environ.items()
-        if key not in ENV_KEYS and not key.startswith(("GPU_", "MVS_"))
+        if key not in ENV_KEYS and not key.startswith(("GPU_", "MVS_", "FASTGS_", "DPP_", "TBP_"))
     }
 
 
@@ -192,6 +189,9 @@ class AblationLauncherTest(unittest.TestCase):
                         "-r": str(resolution), "--iterations": "10000", "--dataset_name": dataset,
                     }.items():
                         self.assertEqual(last_value(args, flag), value)
+                    # These variants keep the auto strategy, which resolves to
+                    # no additional pruning for density none/vcd.
+                    self.assertFalse(any(arg.startswith(("--vcp", "--fastgs", "--dpp")) for arg in args))
                     effective_mvs = complement and dataset != "blender"
                     self.assertEqual(last_value(args, "--init_mode"),
                                      "mvs_anywhere" if effective_mvs else "colmap_dense")
@@ -238,6 +238,17 @@ class AblationLauncherTest(unittest.TestCase):
                 trained_scenes = [Path(last_value(call["args"], "-m")).name
                                   for call in calls if call["kind"] == "train.py"]
                 self.assertEqual(trained_scenes, ALL_SCENES[dataset].split())
+
+    def test_removed_variants_are_rejected_before_dispatch(self):
+        for variant in ("tbp_only", "complement_tbp", "egd_tbp"):
+            for runner, arguments in (("_run.sh", (variant, "llff")),
+                                      ("_matrix.sh", (variant,))):
+                with self.subTest(variant=variant, runner=runner):
+                    result = subprocess.run(
+                        ["bash", str(ROOT / SCRIPTS / runner), *arguments, "--dry-run"],
+                        env=clean_environment(), text=True, capture_output=True)
+                    self.assert_rejected_without_dispatch(result)
+                    self.assertIn("Unknown ablation variant", result.stderr)
 
     def test_no_mvs_variants_and_all_blender_variants_ignore_irrelevant_mvs_settings(self):
         for variant, (complement, _) in VARIANTS.items():
@@ -289,7 +300,7 @@ class AblationLauncherTest(unittest.TestCase):
             "--n_views", "--n_v", "--iterations", "--iter", "--seed", "--test_iterations",
             "--save_iterations", "--start_checkpoint", "--eval", "--images", "-w",
         )
-        for variant in ("complement_only", "egd_only", "tbp_only"):
+        for variant in ("complement_only", "egd_only", "baseline"):
             for option in options:
                 for args in ((option, "invalid"), (option + "=invalid",)):
                     with self.subTest(variant=variant, args=args):
@@ -342,7 +353,7 @@ class AblationLauncherTest(unittest.TestCase):
             self.assertFalse(output.exists())
 
     def test_matrix_subset_and_per_setting_gpu_precedence(self):
-        result = self.run_script("complement_tbp", matrix=True, args=("--dry-run",), env=dict(
+        result = self.run_script("complement_egd", matrix=True, args=("--dry-run",), env=dict(
             clean_environment(), MATRIX="llff:3 llff:6 dtu:9 blender:8", GPU_ID="7",
             GPU_LLFF="2", GPU_LLFF_6="4", GPU_DTU_9="5"))
         self.assert_success(result)
@@ -422,7 +433,7 @@ class AblationLauncherTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             repo, env, log = self.fixture(directory, "llff")
             env.update(MATRIX="llff:3 llff:6", FAKE_FAIL_TRAIN="1")
-            result = self.run_script("complement_tbp", repo=repo, env=env, matrix=True)
+            result = self.run_script("complement_egd", repo=repo, env=env, matrix=True)
             self.assertEqual(result.returncode, 23, result.stdout + result.stderr)
             calls = [json.loads(line) for line in log.read_text().splitlines()]
             self.assertEqual([call["kind"] for call in calls], ["train.py"])

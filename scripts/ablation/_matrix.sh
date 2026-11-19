@@ -6,7 +6,7 @@ script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 variant=${1:?An ablation variant is required}
 shift
 case "$variant" in
-    baseline|complement_only|egd_only|tbp_only|complement_egd|complement_tbp|egd_tbp) ;;
+    baseline|complement_only|egd_only|dpp_only|egd_dpp|complement_egd) ;;
     *) echo "Unknown ablation variant: $variant" >&2; exit 2 ;;
 esac
 dry_run=${DRY_RUN:-0}
@@ -18,7 +18,10 @@ for argument in "$@"; do
             printf '%s\n' \
                 "Usage: bash scripts/ablation/${variant}/train_all_views.sh [--dry-run] [train.py arguments...]" \
                 '' \
-                "Fixed module ablation: ${variant}. The full method remains scripts/mvs_complement/." \
+                "Fixed module ablation: ${variant}. EGD+DPP full method: scripts/mvs_complement/." \
+                'Fixed coverage entry: scripts/mvs_complement_egd_fastgs/ (compatible directory name).' \
+                'DPP-only keeps native ADC; same-event multiview support only protects late pruning.' \
+                'EGD+DPP uses original initialization, active EGD gating and protected DPP, without MVS.' \
                 'Default MATRIX: llff:3 llff:6 llff:9 dtu:3 dtu:6 dtu:9 mipnerf360:12 mipnerf360:24 blender:8.' \
                 'All configured scenes: 91 runs total, one per scene/setting; no multi-seed repetitions.' \
                 'Blender uses original random initialization; complementary initialization is inactive there.' \
